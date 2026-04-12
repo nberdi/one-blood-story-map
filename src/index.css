@@ -225,6 +225,7 @@ a {
   box-shadow: 0 10px 26px rgba(51, 78, 87, 0.08);
   padding: 1rem 1.05rem 1.08rem;
   border: 1px solid var(--line);
+  transition: box-shadow 0.2s ease;
 }
 
 .landing-side-stack {
@@ -239,10 +240,71 @@ a {
 }
 
 .landing-feature-section p {
-  margin: 0.45rem 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.52;
+}
+
+.landing-feature-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.landing-feature-toggle__icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(51, 78, 87, 0.3);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--theme-800);
+  transition:
+    transform 0.25s ease,
+    background-color 0.25s ease;
+}
+
+.landing-feature-toggle__icon--open {
+  transform: rotate(45deg);
+  background: rgba(61, 113, 125, 0.12);
+}
+
+.landing-feature-content {
+  margin-top: 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.28s ease,
+    opacity 0.22s ease,
+    margin-top 0.22s ease;
+}
+
+.landing-feature-content > div {
+  overflow: hidden;
+}
+
+.landing-feature-content--open {
+  margin-top: 0.45rem;
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.landing-feature-section--open {
+  box-shadow: 0 12px 28px rgba(51, 78, 87, 0.11);
 }
 
 .landing-feature-section--explore {
@@ -885,6 +947,13 @@ a {
 .social-link-row {
   display: grid;
   grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.2fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.profile-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.45rem;
   align-items: center;
 }

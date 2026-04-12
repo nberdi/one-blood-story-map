@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   Marker,
@@ -37,21 +37,6 @@ function MapClickHandler({ onMapBackgroundClick }) {
   return null;
 }
 
-function MapReadyReporter({ onMapReady }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!onMapReady) return undefined;
-    onMapReady(map);
-
-    return () => {
-      onMapReady(null);
-    };
-  }, [map, onMapReady]);
-
-  return null;
-}
-
 function MapFocusController({ focusTarget, stories, markerRefs }) {
   const map = useMap();
 
@@ -79,6 +64,12 @@ function MapFocusController({ focusTarget, stories, markerRefs }) {
   return null;
 }
 
+function getCoordinateKey(latitude, longitude) {
+  const safeLatitude = Number(latitude);
+  const safeLongitude = Number(longitude);
+  return `${safeLatitude.toFixed(6)},${safeLongitude.toFixed(6)}`;
+}
+
 export default function StoryMap({
   stories,
   selectedStoryId,
@@ -87,10 +78,52 @@ export default function StoryMap({
   onListenAudio,
   onShareStory,
   focusTarget,
-  onMapReady,
   onMapBackgroundClick,
 }) {
   const markerRefs = useRef(new globalThis.Map());
+  const [groupCycleIndices, setGroupCycleIndices] = useState({});
+
+  const storyGroups = useMemo(() => {
+    const groupedStories = new globalThis.Map();
+
+    stories.forEach((story) => {
+      const groupKey = getCoordinateKey(story.latitude, story.longitude);
+      const existingGroup = groupedStories.get(groupKey);
+
+      if (existingGroup) {
+        existingGroup.stories.push(story);
+        return;
+      }
+
+      groupedStories.set(groupKey, {
+        key: groupKey,
+        latitude: story.latitude,
+        longitude: story.longitude,
+        stories: [story],
+      });
+    });
+
+    return [...groupedStories.values()];
+  }, [stories]);
+
+  useEffect(() => {
+    const activeGroupKeys = new Set(storyGroups.map((group) => group.key));
+
+    setGroupCycleIndices((currentIndices) => {
+      const nextIndices = {};
+      let changed = false;
+
+      Object.entries(currentIndices).forEach(([groupKey, groupIndex]) => {
+        if (!activeGroupKeys.has(groupKey)) {
+          changed = true;
+          return;
+        }
+        nextIndices[groupKey] = groupIndex;
+      });
+
+      return changed ? nextIndices : currentIndices;
+    });
+  }, [storyGroups]);
 
   return (
     <MapContainer
@@ -105,7 +138,6 @@ export default function StoryMap({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <MapReadyReporter onMapReady={onMapReady} />
       <MapClickHandler onMapBackgroundClick={onMapBackgroundClick} />
       <MapFocusController
         focusTarget={focusTarget}
@@ -113,42 +145,86 @@ export default function StoryMap({
         markerRefs={markerRefs}
       />
 
-      {stories.map((story) => {
-        const hasTextStory = Boolean(story.story?.trim());
-        const safeAudioUrl = sanitizeAudioUrl(story.audio_url);
-        const graduationLabel = getGraduationYearLabel(story.graduation_year);
-        const isSelected = selectedStoryId === story.id;
+      {storyGroups.map((group) => {
+        const selectedIndexInGroup = group.stories.findIndex(
+          (story) => story.id === selectedStoryId,
+        );
+        const fallbackCycleIndex = groupCycleIndices[group.key];
+        const activeIndex =
+          selectedIndexInGroup >= 0
+            ? selectedIndexInGroup
+            : Number.isInteger(fallbackCycleIndex)
+              ? Math.min(fallbackCycleIndex, group.stories.length - 1)
+              : 0;
+        const activeStory = group.stories[activeIndex] || group.stories[0];
+        const hasTextStory = Boolean(activeStory.story?.trim());
+        const safeAudioUrl = sanitizeAudioUrl(activeStory.audio_url);
+        const graduationLabel = getGraduationYearLabel(
+          activeStory.graduation_year,
+        );
+        const isSelected = group.stories.some(
+          (story) => story.id === selectedStoryId,
+        );
 
         return (
           <Marker
-            key={story.id}
-            position={[story.latitude, story.longitude]}
+            key={group.key}
+            position={[group.latitude, group.longitude]}
             zIndexOffset={isSelected ? 200 : 0}
             eventHandlers={{
-              click: () => onMarkerSelect(story),
+              click: () => {
+                const storedCycleIndex = groupCycleIndices[group.key];
+                const hasStoredCycleIndex = Number.isInteger(storedCycleIndex);
+                const baseIndex = hasStoredCycleIndex
+                  ? storedCycleIndex
+                  : selectedIndexInGroup >= 0
+                    ? selectedIndexInGroup
+                    : 0;
+                const nextIndex = hasStoredCycleIndex
+                  ? (baseIndex + 1) % group.stories.length
+                  : 0;
+
+                setGroupCycleIndices((currentIndices) => ({
+                  ...currentIndices,
+                  [group.key]: nextIndex,
+                }));
+                onMarkerSelect(group.stories[nextIndex]);
+              },
             }}
             ref={(marker) => {
               if (!marker) {
-                markerRefs.current.delete(story.id);
+                group.stories.forEach((storyItem) =>
+                  markerRefs.current.delete(storyItem.id),
+                );
                 return;
               }
-              markerRefs.current.set(story.id, marker);
+              group.stories.forEach((storyItem) => {
+                markerRefs.current.set(storyItem.id, marker);
+              });
             }}
           >
             <Popup>
               <div className="popup-card">
                 <div className="popup-card__top">
-                  <h3>{story.name?.trim() || "Anonymous"}</h3>
+                  <h3>{activeStory.name?.trim() || "Anonymous"}</h3>
                 </div>
-                {story.pronouns && (
-                  <p className="popup-card__date">{story.pronouns}</p>
+                {activeStory.pronouns && (
+                  <p className="popup-card__date">{activeStory.pronouns}</p>
                 )}
 
                 <p className="popup-card__hometown">
-                  {getHometownWithFlag(story.hometown, story.country_code)}
+                  {getHometownWithFlag(
+                    activeStory.hometown,
+                    activeStory.country_code,
+                  )}
                 </p>
                 {graduationLabel && (
                   <p className="popup-card__date">{graduationLabel}</p>
+                )}
+                {group.stories.length > 1 && (
+                  <p className="popup-card__date">
+                    Story {activeIndex + 1} of {group.stories.length}
+                  </p>
                 )}
 
                 {hasTextStory && onReadStory ? (
@@ -158,7 +234,7 @@ export default function StoryMap({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      onReadStory(story);
+                      onReadStory(activeStory);
                     }}
                   >
                     Read the story
@@ -179,7 +255,7 @@ export default function StoryMap({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      if (onListenAudio) onListenAudio(story);
+                      if (onListenAudio) onListenAudio(activeStory);
                     }}
                   >
                     Listen to audio
@@ -191,7 +267,7 @@ export default function StoryMap({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      onShareStory(story);
+                      onShareStory(activeStory);
                     }}
                     style={{
                       display: "block",
@@ -211,12 +287,12 @@ export default function StoryMap({
                   </button>
                 )}
 
-                {Array.isArray(story.social_links) &&
-                  story.social_links.length > 0 && (
+                {Array.isArray(activeStory.social_links) &&
+                  activeStory.social_links.length > 0 && (
                     <div className="popup-card__social">
-                      {story.social_links.map((link, index) => (
+                      {activeStory.social_links.map((link, index) => (
                         <a
-                          key={`${story.id}-${link.platform}-${index}`}
+                          key={`${activeStory.id}-${link.platform}-${index}`}
                           href={link.url}
                           target="_blank"
                           rel="noreferrer noopener"

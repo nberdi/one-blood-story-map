@@ -6,15 +6,17 @@ export default function StorySidebar({
   totalStoriesCount,
   selectedStoryId,
   searchQuery,
-  hometownFilter,
+  majorFilter,
+  majorOptions,
+  occupationFilter,
+  occupationOptions,
   graduationYearFilter,
   graduationYearOptions,
-  storyTypeFilter,
   sortBy,
   onSearchChange,
-  onHometownFilterChange,
+  onMajorFilterChange,
+  onOccupationFilterChange,
   onGraduationYearFilterChange,
-  onStoryTypeFilterChange,
   onSortChange,
   onSelectStory,
   loading,
@@ -50,33 +52,41 @@ export default function StorySidebar({
           <input
             id="search"
             type="text"
-            placeholder="Name, hometown, or story text"
+            placeholder="Name, hometown, major, occupation, or story text"
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
           />
         </label>
 
-        <label htmlFor="hometown-filter">
-          Hometown Filter
-          <input
-            id="hometown-filter"
-            type="text"
-            placeholder="Filter hometown"
-            value={hometownFilter}
-            onChange={(event) => onHometownFilterChange(event.target.value)}
-          />
+        <label htmlFor="major-filter">
+          Major
+          <select
+            id="major-filter"
+            value={majorFilter}
+            onChange={(event) => onMajorFilterChange(event.target.value)}
+          >
+            <option value="">All majors</option>
+            {majorOptions.map((majorOption) => (
+              <option key={majorOption} value={majorOption}>
+                {majorOption}
+              </option>
+            ))}
+          </select>
         </label>
 
-        <label htmlFor="type-filter">
-          Story Type
+        <label htmlFor="occupation-filter">
+          Occupation
           <select
-            id="type-filter"
-            value={storyTypeFilter}
-            onChange={(event) => onStoryTypeFilterChange(event.target.value)}
+            id="occupation-filter"
+            value={occupationFilter}
+            onChange={(event) => onOccupationFilterChange(event.target.value)}
           >
-            <option value="all">All</option>
-            <option value="text">Text</option>
-            <option value="audio">Audio</option>
+            <option value="">All occupations</option>
+            {occupationOptions.map((occupationOption) => (
+              <option key={occupationOption} value={occupationOption}>
+                {occupationOption}
+              </option>
+            ))}
           </select>
         </label>
 

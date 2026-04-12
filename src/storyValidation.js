@@ -2,6 +2,8 @@ export const STORY_MAX_WORDS = 600;
 export const SHARE_TEXT_MAX_WORDS = 100;
 export const NAME_MAX_LENGTH = 80;
 export const HOMETOWN_MAX_LENGTH = 120;
+export const MAJOR_MAX_LENGTH = 80;
+export const OCCUPATION_MAX_LENGTH = 80;
 export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 export const GRAD_YEAR_MIN = 1900;
 export const GRAD_YEAR_MAX = new Date().getFullYear() + 10;
@@ -216,6 +218,26 @@ function normalizeSocialInputEntries(entries) {
   }));
 }
 
+function normalizeProfileList(entries, maxItemLength) {
+  if (!Array.isArray(entries)) return [];
+
+  const seenValues = new Set();
+  const normalized = [];
+
+  entries.forEach((entry) => {
+    const sanitizedValue = sanitizeText(entry, maxItemLength);
+    if (!sanitizedValue) return;
+
+    const normalizedKey = sanitizedValue.toLowerCase();
+    if (seenValues.has(normalizedKey)) return;
+
+    seenValues.add(normalizedKey);
+    normalized.push(sanitizedValue);
+  });
+
+  return normalized;
+}
+
 export function normalizeSocialLinks(entries) {
   const normalizedInput = normalizeSocialInputEntries(entries);
   const dedupedLinks = [];
@@ -289,6 +311,11 @@ export function normalizeSubmissionValues(values) {
     pronounsSelection,
     pronouns: resolvePronouns(pronounsSelection, values?.pronounsOther),
     hometownLocation: sanitizeHometownLocation(values?.hometownLocation),
+    majors: normalizeProfileList(values?.majors, MAJOR_MAX_LENGTH),
+    occupations: normalizeProfileList(
+      values?.occupations,
+      OCCUPATION_MAX_LENGTH,
+    ),
     socialLinks: normalizeSocialInputEntries(values?.socialLinks),
     audioFile: values?.audioFile || null,
     removeAudio: Boolean(values?.removeAudio),

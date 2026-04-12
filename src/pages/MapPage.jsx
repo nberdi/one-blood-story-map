@@ -6,7 +6,6 @@ import AddStoryModal from "../AddStoryModal";
 import StoryCardModal from "../components/StoryCardModal";
 import AudioPlayerModal from "../components/AudioPlayerModal";
 import StoryReaderModal from "../components/StoryReaderModal";
-import { useArcLayer } from "../hooks/useArcLayer";
 import { geocodeHometown } from "../hometownSearch";
 import { useAuth } from "../auth/AuthContext";
 import { useRouter } from "../router";
@@ -28,7 +27,6 @@ import {
   buildAudioFilePath,
   getGraduationYearOptions,
   getStoryType,
-  getStoryTypeFromRecord,
   sanitizeAudioUrl,
   sanitizeStoryRow,
   sanitizeStoryRows,
@@ -36,23 +34,61 @@ import {
 
 const STORY_SELECT_FIELDS_BASE =
   "id,name,pronouns,hometown,country_code,story,audio_url,story_type,graduation_year,social_links,latitude,longitude,created_at,user_id";
-const STORY_SELECT_FIELDS_WITH_SHARE_TEXT =
-  "id,name,pronouns,hometown,country_code,story,share_text,audio_url,story_type,graduation_year,social_links,latitude,longitude,created_at,user_id";
 
-function getStorySelectFields(shouldIncludeShareText) {
-  return shouldIncludeShareText
-    ? STORY_SELECT_FIELDS_WITH_SHARE_TEXT
-    : STORY_SELECT_FIELDS_BASE;
+function getStorySelectFields({ includeShareText, includeProfileDetails }) {
+  const selectFields = [STORY_SELECT_FIELDS_BASE];
+  if (includeShareText) selectFields.push("share_text");
+  if (includeProfileDetails) selectFields.push("majors", "occupations");
+  return selectFields.join(",");
 }
 
-function isMissingShareTextColumnError(error) {
+function getMissingOptionalColumns(error) {
   const detailText =
     `${error?.message || ""} ${error?.details || ""}`.toLowerCase();
-  return detailText.includes("share_text") && detailText.includes("column");
+  const missingColumns = new Set();
+
+  if (
+    (detailText.includes("share_text") && detailText.includes("column")) ||
+    detailText.includes("share_text does not exist")
+  ) {
+    missingColumns.add("share_text");
+  }
+
+  if (
+    (detailText.includes("majors") && detailText.includes("column")) ||
+    detailText.includes("majors does not exist")
+  ) {
+    missingColumns.add("majors");
+  }
+
+  if (
+    (detailText.includes("occupations") && detailText.includes("column")) ||
+    detailText.includes("occupations does not exist")
+  ) {
+    missingColumns.add("occupations");
+  }
+
+  return missingColumns;
 }
 
 function includesQuery(value, query) {
   return typeof value === "string" && value.toLowerCase().includes(query);
+}
+
+function includesListQuery(values, query) {
+  if (!Array.isArray(values)) return false;
+  return values.some((value) => includesQuery(value, query));
+}
+
+function matchesListValue(values, selectedValue) {
+  if (!Array.isArray(values)) return false;
+  const normalizedSelection = selectedValue.trim().toLowerCase();
+  if (!normalizedSelection) return true;
+  return values.some(
+    (value) =>
+      typeof value === "string" &&
+      value.trim().toLowerCase() === normalizedSelection,
+  );
 }
 
 function getPronounsInitialValues(pronounsValue) {
@@ -92,14 +128,14 @@ export default function MapPage() {
   const [storyReaderStory, setStoryReaderStory] = useState(null);
   const [audioPlayerStory, setAudioPlayerStory] = useState(null);
   const [supportsShareText, setSupportsShareText] = useState(true);
+  const [supportsProfileDetails, setSupportsProfileDetails] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [mapInstance, setMapInstance] = useState(null);
   const [selectedStoryId, setSelectedStoryId] = useState(null);
   const [mapFocusTarget, setMapFocusTarget] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [hometownFilter, setHometownFilter] = useState("");
+  const [majorFilter, setMajorFilter] = useState("");
+  const [occupationFilter, setOccupationFilter] = useState("");
   const [graduationYearFilter, setGraduationYearFilter] = useState("all");
-  const [storyTypeFilter, setStoryTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
 
   const fetchRequestIdRef = useRef(0);
@@ -131,26 +167,45 @@ export default function MapPage() {
       }
 
       try {
-        const selectFields = getStorySelectFields(supportsShareText);
-        let { data, error: fetchError } = await supabase
-          .from("stories")
-          .select(selectFields)
-          .order("created_at", { ascending: false })
-          .limit(STORIES_FETCH_LIMIT);
+        let includeShareText = supportsShareText;
+        let includeProfileDetails = supportsProfileDetails;
+        let data = null;
+        let fetchError = null;
 
-        if (
-          fetchError &&
-          supportsShareText &&
-          isMissingShareTextColumnError(fetchError)
-        ) {
-          setSupportsShareText(false);
-          const fallbackResult = await supabase
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const selectFields = getStorySelectFields({
+            includeShareText,
+            includeProfileDetails,
+          });
+          const fetchResult = await supabase
             .from("stories")
-            .select(getStorySelectFields(false))
+            .select(selectFields)
             .order("created_at", { ascending: false })
             .limit(STORIES_FETCH_LIMIT);
-          data = fallbackResult.data;
-          fetchError = fallbackResult.error;
+
+          data = fetchResult.data;
+          fetchError = fetchResult.error;
+
+          if (!fetchError) break;
+
+          const missingColumns = getMissingOptionalColumns(fetchError);
+          let shouldRetry = false;
+
+          if (includeShareText && missingColumns.has("share_text")) {
+            includeShareText = false;
+            setSupportsShareText(false);
+            shouldRetry = true;
+          }
+          if (
+            includeProfileDetails &&
+            (missingColumns.has("majors") || missingColumns.has("occupations"))
+          ) {
+            includeProfileDetails = false;
+            setSupportsProfileDetails(false);
+            shouldRetry = true;
+          }
+
+          if (!shouldRetry) break;
         }
 
         if (requestId !== fetchRequestIdRef.current) {
@@ -190,7 +245,7 @@ export default function MapPage() {
         }
       }
     },
-    [supportsShareText],
+    [supportsProfileDetails, supportsShareText],
   );
 
   useEffect(() => {
@@ -199,24 +254,29 @@ export default function MapPage() {
 
   const filteredStories = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    const hometownQuery = hometownFilter.trim().toLowerCase();
+    const majorQuery = majorFilter.trim().toLowerCase();
+    const occupationQuery = occupationFilter.trim().toLowerCase();
 
     let nextStories = stories.filter((story) => {
       if (query) {
         const searchMatch =
           includesQuery(story.name, query) ||
           includesQuery(story.hometown, query) ||
-          includesQuery(story.story, query);
+          includesQuery(story.story, query) ||
+          includesListQuery(story.majors, query) ||
+          includesListQuery(story.occupations, query);
         if (!searchMatch) return false;
       }
 
-      if (hometownQuery && !includesQuery(story.hometown, hometownQuery)) {
+      if (majorQuery && !matchesListValue(story.majors, majorQuery)) {
         return false;
       }
 
-      if (storyTypeFilter !== "all") {
-        const type = getStoryTypeFromRecord(story);
-        if (type !== storyTypeFilter) return false;
+      if (
+        occupationQuery &&
+        !matchesListValue(story.occupations, occupationQuery)
+      ) {
+        return false;
       }
 
       if (graduationYearFilter !== "all") {
@@ -245,9 +305,9 @@ export default function MapPage() {
   }, [
     stories,
     searchQuery,
-    hometownFilter,
+    majorFilter,
+    occupationFilter,
     graduationYearFilter,
-    storyTypeFilter,
     sortBy,
   ]);
 
@@ -255,7 +315,46 @@ export default function MapPage() {
     () => getGraduationYearOptions(stories),
     [stories],
   );
-  const { selectPin, clearArcs } = useArcLayer(mapInstance, filteredStories);
+  const majorOptions = useMemo(() => {
+    const majorMap = new globalThis.Map();
+
+    stories.forEach((story) => {
+      if (!Array.isArray(story.majors)) return;
+      story.majors.forEach((major) => {
+        if (typeof major !== "string") return;
+        const trimmedMajor = major.trim();
+        if (!trimmedMajor) return;
+        const normalizedMajor = trimmedMajor.toLowerCase();
+        if (!majorMap.has(normalizedMajor)) {
+          majorMap.set(normalizedMajor, trimmedMajor);
+        }
+      });
+    });
+
+    return [...majorMap.values()].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [stories]);
+  const occupationOptions = useMemo(() => {
+    const occupationMap = new globalThis.Map();
+
+    stories.forEach((story) => {
+      if (!Array.isArray(story.occupations)) return;
+      story.occupations.forEach((occupation) => {
+        if (typeof occupation !== "string") return;
+        const trimmedOccupation = occupation.trim();
+        if (!trimmedOccupation) return;
+        const normalizedOccupation = trimmedOccupation.toLowerCase();
+        if (!occupationMap.has(normalizedOccupation)) {
+          occupationMap.set(normalizedOccupation, trimmedOccupation);
+        }
+      });
+    });
+
+    return [...occupationMap.values()].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    );
+  }, [stories]);
 
   const userProfileStory = useMemo(() => {
     if (!user?.id) return null;
@@ -301,6 +400,12 @@ export default function MapPage() {
         : "",
       story: userProfileStory.story || "",
       shareText: userProfileStory.share_text || "",
+      majors: Array.isArray(userProfileStory.majors)
+        ? userProfileStory.majors
+        : [],
+      occupations: Array.isArray(userProfileStory.occupations)
+        ? userProfileStory.occupations
+        : [],
       socialLinks: Array.isArray(userProfileStory.social_links)
         ? userProfileStory.social_links.map((link) => ({
             platform: link?.platform || "",
@@ -314,9 +419,9 @@ export default function MapPage() {
 
   const hasActiveFilters =
     searchQuery.trim().length > 0 ||
-    hometownFilter.trim().length > 0 ||
-    graduationYearFilter !== "all" ||
-    storyTypeFilter !== "all";
+    majorFilter.trim().length > 0 ||
+    occupationFilter.trim().length > 0 ||
+    graduationYearFilter !== "all";
 
   const openProfileModal = () => {
     setSubmitError("");
@@ -345,29 +450,20 @@ export default function MapPage() {
     setIsModalOpen(true);
   };
 
-  const handleMarkerSelect = useCallback(
-    (story) => {
-      if (!story) return;
-      setSelectedStoryId(story.id);
-      setMapFocusTarget({ storyId: story.id, token: Date.now() });
-      selectPin(story);
-    },
-    [selectPin],
-  );
+  const handleMarkerSelect = useCallback((story) => {
+    if (!story) return;
+    setSelectedStoryId(story.id);
+    setMapFocusTarget({ storyId: story.id, token: Date.now() });
+  }, []);
 
-  const handleStorySelectFromList = useCallback(
-    (story) => {
-      setSelectedStoryId(story.id);
-      setMapFocusTarget({ storyId: story.id, token: Date.now() });
-      selectPin(story);
-    },
-    [selectPin],
-  );
+  const handleStorySelectFromList = useCallback((story) => {
+    setSelectedStoryId(story.id);
+    setMapFocusTarget({ storyId: story.id, token: Date.now() });
+  }, []);
 
   const handleMapBackgroundClick = useCallback(() => {
     setSelectedStoryId(null);
-    clearArcs();
-  }, [clearArcs]);
+  }, []);
 
   const handleOpenStoryReader = useCallback(async (story) => {
     if (!story) return;
@@ -571,28 +667,45 @@ export default function MapPage() {
 
       let existingProfile = userProfileStory;
       if (!existingProfile) {
-        const lookupFields = getStorySelectFields(supportsShareText);
-        let { data: existingRows, error: existingLookupError } = await supabase
-          .from("stories")
-          .select(lookupFields)
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1);
+        let includeShareText = supportsShareText;
+        let includeProfileDetails = supportsProfileDetails;
+        let existingRows = null;
+        let existingLookupError = null;
 
-        if (
-          existingLookupError &&
-          supportsShareText &&
-          isMissingShareTextColumnError(existingLookupError)
-        ) {
-          setSupportsShareText(false);
-          const fallbackLookup = await supabase
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const lookupFields = getStorySelectFields({
+            includeShareText,
+            includeProfileDetails,
+          });
+          const lookupResult = await supabase
             .from("stories")
-            .select(getStorySelectFields(false))
+            .select(lookupFields)
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
             .limit(1);
-          existingRows = fallbackLookup.data;
-          existingLookupError = fallbackLookup.error;
+
+          existingRows = lookupResult.data;
+          existingLookupError = lookupResult.error;
+          if (!existingLookupError) break;
+
+          const missingColumns = getMissingOptionalColumns(existingLookupError);
+          let shouldRetry = false;
+
+          if (includeShareText && missingColumns.has("share_text")) {
+            includeShareText = false;
+            setSupportsShareText(false);
+            shouldRetry = true;
+          }
+          if (
+            includeProfileDetails &&
+            (missingColumns.has("majors") || missingColumns.has("occupations"))
+          ) {
+            includeProfileDetails = false;
+            setSupportsProfileDetails(false);
+            shouldRetry = true;
+          }
+
+          if (!shouldRetry) break;
         }
 
         if (existingLookupError) {
@@ -634,6 +747,8 @@ export default function MapPage() {
         country_code: hometownLocation.countryCode || null,
         story: normalizedValues.story,
         graduation_year: normalizedValues.graduationYear,
+        majors: normalizedValues.majors,
+        occupations: normalizedValues.occupations,
         social_links: normalizeSocialLinks(normalizedValues.socialLinks),
         audio_url: resolvedAudioUrl,
         story_type: getStoryType(hasText, hasAudio),
@@ -643,17 +758,32 @@ export default function MapPage() {
       if (supportsShareText) {
         payload.share_text = normalizedValues.shareText || null;
       }
+      if (!supportsProfileDetails) {
+        delete payload.majors;
+        delete payload.occupations;
+      }
 
       let savedData = null;
       let saveError = null;
       let wasUpdate = false;
-      const persistProfile = async ({ includeShareText }) => {
-        const persistedPayload = includeShareText
-          ? payload
-          : Object.fromEntries(
-              Object.entries(payload).filter(([key]) => key !== "share_text"),
-            );
-        const selectFields = getStorySelectFields(includeShareText);
+      const persistProfile = async ({
+        includeShareText,
+        includeProfileDetails,
+      }) => {
+        const excludedKeys = new Set();
+        if (!includeShareText) excludedKeys.add("share_text");
+        if (!includeProfileDetails) {
+          excludedKeys.add("majors");
+          excludedKeys.add("occupations");
+        }
+
+        const persistedPayload = Object.fromEntries(
+          Object.entries(payload).filter(([key]) => !excludedKeys.has(key)),
+        );
+        const selectFields = getStorySelectFields({
+          includeShareText,
+          includeProfileDetails,
+        });
 
         if (existingProfile?.id) {
           wasUpdate = true;
@@ -677,16 +807,29 @@ export default function MapPage() {
 
       ({ data: savedData, error: saveError } = await persistProfile({
         includeShareText: supportsShareText,
+        includeProfileDetails: supportsProfileDetails,
       }));
 
-      if (
+      const missingSaveColumns = getMissingOptionalColumns(saveError);
+      const shouldRetryWithoutShareText =
+        saveError && supportsShareText && missingSaveColumns.has("share_text");
+      const shouldRetryWithoutProfileDetails =
         saveError &&
-        supportsShareText &&
-        isMissingShareTextColumnError(saveError)
-      ) {
-        setSupportsShareText(false);
+        supportsProfileDetails &&
+        (missingSaveColumns.has("majors") ||
+          missingSaveColumns.has("occupations"));
+
+      if (shouldRetryWithoutShareText || shouldRetryWithoutProfileDetails) {
+        if (shouldRetryWithoutShareText) setSupportsShareText(false);
+        if (shouldRetryWithoutProfileDetails) setSupportsProfileDetails(false);
+
         ({ data: savedData, error: saveError } = await persistProfile({
-          includeShareText: false,
+          includeShareText: shouldRetryWithoutShareText
+            ? false
+            : supportsShareText,
+          includeProfileDetails: shouldRetryWithoutProfileDetails
+            ? false
+            : supportsProfileDetails,
         }));
       }
 
@@ -737,7 +880,6 @@ export default function MapPage() {
       if (savedStory) {
         setSelectedStoryId(savedStory.id);
         setMapFocusTarget({ storyId: savedStory.id, token: Date.now() });
-        selectPin(savedStory);
       }
 
       if (previousAudioUrl && previousAudioUrl !== resolvedAudioUrl) {
@@ -764,7 +906,6 @@ export default function MapPage() {
     await signOut();
     setSubmitSuccess("");
     setSubmitError("You have logged out.");
-    clearArcs();
     setSelectedStoryId(null);
   };
 
@@ -795,8 +936,7 @@ export default function MapPage() {
     if (selectedStillVisible) return;
 
     setSelectedStoryId(null);
-    clearArcs();
-  }, [clearArcs, filteredStories, selectedStoryId]);
+  }, [filteredStories, selectedStoryId]);
 
   return (
     <div className="app-shell">
@@ -816,15 +956,17 @@ export default function MapPage() {
           totalStoriesCount={stories.length}
           selectedStoryId={selectedStoryId}
           searchQuery={searchQuery}
-          hometownFilter={hometownFilter}
-          storyTypeFilter={storyTypeFilter}
+          majorFilter={majorFilter}
+          majorOptions={majorOptions}
+          occupationFilter={occupationFilter}
+          occupationOptions={occupationOptions}
           graduationYearFilter={graduationYearFilter}
           graduationYearOptions={graduationYearOptions}
           sortBy={sortBy}
           onSearchChange={setSearchQuery}
-          onHometownFilterChange={setHometownFilter}
+          onMajorFilterChange={setMajorFilter}
+          onOccupationFilterChange={setOccupationFilter}
           onGraduationYearFilterChange={setGraduationYearFilter}
-          onStoryTypeFilterChange={setStoryTypeFilter}
           onSortChange={setSortBy}
           onSelectStory={handleStorySelectFromList}
           loading={loading}
@@ -839,7 +981,6 @@ export default function MapPage() {
             onListenAudio={handleOpenAudioPlayer}
             onShareStory={handleShareStory}
             focusTarget={mapFocusTarget}
-            onMapReady={setMapInstance}
             onMapBackgroundClick={handleMapBackgroundClick}
           />
 

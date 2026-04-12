@@ -2,7 +2,9 @@ import {
   GRAD_YEAR_MAX,
   GRAD_YEAR_MIN,
   HOMETOWN_MAX_LENGTH,
+  MAJOR_MAX_LENGTH,
   NAME_MAX_LENGTH,
+  OCCUPATION_MAX_LENGTH,
   PRONOUNS_MAX_LENGTH,
   SOCIAL_PLATFORM_OPTIONS,
   isValidGraduationYear,
@@ -19,6 +21,30 @@ function sanitizeCountryCode(value) {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase();
   return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+}
+
+function sanitizeProfileList(value, maxItemLength) {
+  const rawList = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+
+  const dedupedValues = [];
+  const seen = new Set();
+
+  rawList.forEach((item) => {
+    const sanitizedItem = sanitizeText(item, maxItemLength);
+    if (!sanitizedItem) return;
+
+    const normalizedItem = sanitizedItem.toLowerCase();
+    if (seen.has(normalizedItem)) return;
+
+    seen.add(normalizedItem);
+    dedupedValues.push(sanitizedItem);
+  });
+
+  return dedupedValues;
 }
 
 export function getStoryType(hasTextStory, hasAudioStory) {
@@ -76,6 +102,11 @@ export function sanitizeStoryRow(row) {
       }))
     : [];
   const socialLinks = normalizeSocialLinks(socialLinksRaw);
+  const majors = sanitizeProfileList(row.majors, MAJOR_MAX_LENGTH);
+  const occupations = sanitizeProfileList(
+    row.occupations,
+    OCCUPATION_MAX_LENGTH,
+  );
 
   return {
     id: row.id,
@@ -91,6 +122,8 @@ export function sanitizeStoryRow(row) {
     graduation_year: graduationYear,
     pronouns: sanitizeText(row.pronouns, PRONOUNS_MAX_LENGTH),
     social_links: socialLinks,
+    majors,
+    occupations,
     latitude,
     longitude,
     created_at: row.created_at || null,

@@ -5,7 +5,9 @@ import {
   GRAD_YEAR_MAX,
   GRAD_YEAR_MIN,
   HOMETOWN_MAX_LENGTH,
+  MAJOR_MAX_LENGTH,
   NAME_MAX_LENGTH,
+  OCCUPATION_MAX_LENGTH,
   PRONOUN_OPTIONS,
   SOCIAL_HELPER_TEXT,
   SOCIAL_LINK_MAX_COUNT,
@@ -20,6 +22,52 @@ import {
 } from "./storyValidation";
 import { searchHometownSuggestions } from "./hometownSearch";
 
+const MAJOR_SUGGESTIONS = [
+  "African and African American Studies",
+  "Agriculture and Natural Resources",
+  "Art: History",
+  "Art: Studio",
+  "Asian Studies",
+  "Biology",
+  "Business",
+  "Chemistry",
+  "Child and Family Studies",
+  "Communication",
+  "Computer and Information Science",
+  "Economics",
+  "Education Studies",
+  "Engineering Physics",
+  "Engineering Technologies and Applied Design",
+  "English",
+  "Environmental Science",
+  "French",
+  "German",
+  "Health and Human Performance",
+  "Health Studies",
+  "History",
+  "Mathematics",
+  "Music",
+  "Nursing",
+  "Peace and Social Justice Studies",
+  "Philosophy",
+  "Physics",
+  "Political Science",
+  "Psychology",
+  "Studies of Religion and Spirituality",
+  "Sociology",
+  "Spanish",
+  "Theatre",
+  "Women and Gender Studies",
+];
+
+function normalizeListInitialValues(values) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function normalizeInitialValues(initialValues) {
   if (!initialValues || typeof initialValues !== "object") {
     return {
@@ -31,6 +79,8 @@ function normalizeInitialValues(initialValues) {
       graduationYear: "",
       story: "",
       shareText: "",
+      majors: [],
+      occupations: [],
       socialLinks: [],
       hasAudio: false,
       audioUrl: "",
@@ -46,6 +96,8 @@ function normalizeInitialValues(initialValues) {
     graduationYear: initialValues.graduationYear || "",
     story: initialValues.story || "",
     shareText: initialValues.shareText || "",
+    majors: normalizeListInitialValues(initialValues.majors),
+    occupations: normalizeListInitialValues(initialValues.occupations),
     socialLinks: Array.isArray(initialValues.socialLinks)
       ? initialValues.socialLinks
       : [],
@@ -82,6 +134,8 @@ export default function AddStoryModal({
   const [graduationYear, setGraduationYear] = useState("");
   const [story, setStory] = useState("");
   const [shareText, setShareText] = useState("");
+  const [majors, setMajors] = useState([""]);
+  const [occupations, setOccupations] = useState([""]);
   const [socialLinks, setSocialLinks] = useState([]);
   const [audioFile, setAudioFile] = useState(null);
   const [initialHadAudio, setInitialHadAudio] = useState(false);
@@ -106,6 +160,16 @@ export default function AddStoryModal({
     setGraduationYear(normalizedInitialValues.graduationYear);
     setStory(normalizedInitialValues.story);
     setShareText(normalizedInitialValues.shareText);
+    setMajors(
+      normalizedInitialValues.majors.length > 0
+        ? normalizedInitialValues.majors
+        : [""],
+    );
+    setOccupations(
+      normalizedInitialValues.occupations.length > 0
+        ? normalizedInitialValues.occupations
+        : [""],
+    );
     setSocialLinks(normalizedInitialValues.socialLinks);
     setAudioFile(null);
     setInitialHadAudio(normalizedInitialValues.hasAudio);
@@ -174,6 +238,8 @@ export default function AddStoryModal({
       graduationYear,
       story,
       shareText,
+      majors,
+      occupations,
       socialLinks,
       audioFile,
       removeAudio: removeSavedAudio && !audioFile,
@@ -234,6 +300,56 @@ export default function AddStoryModal({
     setAudioFile(selectedFile);
     setHasSavedAudio(false);
     setRemoveSavedAudio(false);
+    if (error) setError("");
+  };
+
+  const handleProfileListChange = (listType, index, value) => {
+    const trimmedValue = value.slice(
+      0,
+      listType === "majors" ? MAJOR_MAX_LENGTH : OCCUPATION_MAX_LENGTH,
+    );
+
+    if (listType === "majors") {
+      setMajors((currentList) =>
+        currentList.map((item, itemIndex) =>
+          itemIndex === index ? trimmedValue : item,
+        ),
+      );
+    } else {
+      setOccupations((currentList) =>
+        currentList.map((item, itemIndex) =>
+          itemIndex === index ? trimmedValue : item,
+        ),
+      );
+    }
+    if (error) setError("");
+  };
+
+  const handleProfileListAdd = (listType) => {
+    if (listType === "majors") {
+      setMajors((currentList) => [...currentList, ""]);
+    } else {
+      setOccupations((currentList) => [...currentList, ""]);
+    }
+    if (error) setError("");
+  };
+
+  const handleProfileListRemove = (listType, index) => {
+    if (listType === "majors") {
+      setMajors((currentList) => {
+        const nextList = currentList.filter(
+          (_, itemIndex) => itemIndex !== index,
+        );
+        return nextList.length ? nextList : [""];
+      });
+    } else {
+      setOccupations((currentList) => {
+        const nextList = currentList.filter(
+          (_, itemIndex) => itemIndex !== index,
+        );
+        return nextList.length ? nextList : [""];
+      });
+    }
     if (error) setError("");
   };
 
@@ -485,6 +601,84 @@ export default function AddStoryModal({
             placeholder={`${GRAD_YEAR_MIN}-${GRAD_YEAR_MAX}`}
             required
           />
+
+          <label>🎓 Majors (B.A. and/or B.S.)</label>
+          <div className="social-links-builder">
+            {majors.map((major, index) => (
+              <div className="profile-list-row" key={`major-${index}`}>
+                <input
+                  type="text"
+                  value={major}
+                  list="major-suggestions"
+                  maxLength={MAJOR_MAX_LENGTH}
+                  onChange={(event) =>
+                    handleProfileListChange("majors", index, event.target.value)
+                  }
+                  placeholder="Add a major"
+                  disabled={isSaving}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary social-link-remove"
+                  onClick={() => handleProfileListRemove("majors", index)}
+                  disabled={isSaving}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn-secondary social-link-add"
+              onClick={() => handleProfileListAdd("majors")}
+              disabled={isSaving}
+            >
+              Add Major
+            </button>
+          </div>
+          <datalist id="major-suggestions">
+            {MAJOR_SUGGESTIONS.map((majorOption) => (
+              <option key={majorOption} value={majorOption} />
+            ))}
+          </datalist>
+
+          <label>Occupations (optional)</label>
+          <div className="social-links-builder">
+            {occupations.map((occupation, index) => (
+              <div className="profile-list-row" key={`occupation-${index}`}>
+                <input
+                  type="text"
+                  value={occupation}
+                  maxLength={OCCUPATION_MAX_LENGTH}
+                  onChange={(event) =>
+                    handleProfileListChange(
+                      "occupations",
+                      index,
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Add an occupation"
+                  disabled={isSaving}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary social-link-remove"
+                  onClick={() => handleProfileListRemove("occupations", index)}
+                  disabled={isSaving}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="btn-secondary social-link-add"
+              onClick={() => handleProfileListAdd("occupations")}
+              disabled={isSaving}
+            >
+              Add Occupation
+            </button>
+          </div>
 
           <label>Social Media Profiles (optional)</label>
           <div className="social-links-builder">
