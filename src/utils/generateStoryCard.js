@@ -9,13 +9,9 @@ function getSafeText(value, fallback = "") {
   return trimmed || fallback;
 }
 
-function getStoryTextOrFallback(shareText, storyText) {
+function getShareTextOnly(shareText) {
   const safeShareText = getSafeText(shareText);
-  if (safeShareText) return safeShareText;
-
-  const safeStory = getSafeText(storyText);
-  if (!safeStory) return "My story is on the map.";
-  return safeStory;
+  return safeShareText;
 }
 
 function getFlagFromCountryCode(countryCode) {
@@ -180,7 +176,7 @@ export async function generateStoryCard(story) {
   const name = getSafeText(story?.name, "Anonymous");
   const pronouns = getSafeText(story?.pronouns, "Pronouns not listed");
   const hometown = getSafeText(story?.hometown, "Unknown hometown");
-  const storyText = getStoryTextOrFallback(story?.share_text, story?.story);
+  const storyText = getShareTextOnly(story?.share_text);
   const graduationText = getGraduationText(story?.graduation_year);
   const flag = getFlagFromCountryCode(story?.country_code);
 
@@ -234,15 +230,17 @@ export async function generateStoryCard(story) {
   const maxStoryLines = Math.floor(
     (storyBottomY - storyTopY) / storyLineHeight,
   );
-  const storyLines = fitTextToLineCount(
-    ctx,
-    storyText,
-    storyMaxWidth,
-    Math.max(maxStoryLines, 1),
-  );
-  storyLines.forEach((line, index) => {
-    ctx.fillText(line, CARD_SIZE / 2, storyTopY + index * storyLineHeight);
-  });
+  if (storyText) {
+    const storyLines = fitTextToLineCount(
+      ctx,
+      storyText,
+      storyMaxWidth,
+      Math.max(maxStoryLines, 1),
+    );
+    storyLines.forEach((line, index) => {
+      ctx.fillText(line, CARD_SIZE / 2, storyTopY + index * storyLineHeight);
+    });
+  }
 
   ctx.fillStyle = "#E8734A";
   ctx.fillRect(0, 960, CARD_SIZE, 2);

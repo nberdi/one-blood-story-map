@@ -227,7 +227,7 @@ export default function StoryMap({
                   </p>
                 )}
 
-                {hasTextStory && onReadStory ? (
+                {hasTextStory && onReadStory && (
                   <button
                     type="button"
                     className="popup-card__read-btn"
@@ -239,14 +239,6 @@ export default function StoryMap({
                   >
                     Read the story
                   </button>
-                ) : safeAudioUrl ? (
-                  <p className="popup-card__story popup-card__story--muted">
-                    Audio story only. Press play to listen.
-                  </p>
-                ) : (
-                  <p className="popup-card__story popup-card__story--muted">
-                    Profile added. No text or audio story yet.
-                  </p>
                 )}
                 {safeAudioUrl && (
                   <button
