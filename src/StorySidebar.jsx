@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import {
-  getGraduationYearLabel,
-  getHometownWithFlag,
-  getStoryPreview,
-  getStoryTypeFromRecord,
-  getStoryTypeLabel,
-} from "./storyUtils";
+import { getGraduationYearLabel, getHometownWithFlag } from "./storyUtils";
 
 export default function StorySidebar({
   stories,
@@ -135,9 +129,6 @@ export default function StorySidebar({
         )}
 
         {stories.map((story) => {
-          const storyType = getStoryTypeFromRecord(story);
-          const hasAudio = Boolean(story.audio_url);
-          const preview = getStoryPreview(story.story, hasAudio);
           const graduationLabel = getGraduationYearLabel(story.graduation_year);
           const isSelected = selectedStoryId === story.id;
 
@@ -157,9 +148,6 @@ export default function StorySidebar({
             >
               <div className="story-list__item-top">
                 <h3>{story.name || "Anonymous"}</h3>
-                <span className="story-badge">
-                  {getStoryTypeLabel(storyType)}
-                </span>
               </div>
               {story.pronouns && (
                 <p className="story-list__pronouns">{story.pronouns}</p>
@@ -168,15 +156,8 @@ export default function StorySidebar({
               <p className="story-list__hometown">
                 {getHometownWithFlag(story.hometown, story.country_code)}
               </p>
-              <p className="story-list__preview">{preview}</p>
               {graduationLabel && (
                 <p className="story-list__class-year">{graduationLabel}</p>
-              )}
-
-              {hasAudio && (
-                <div className="story-list__meta">
-                  <span className="story-list__audio-flag">Audio</span>
-                </div>
               )}
             </button>
           );

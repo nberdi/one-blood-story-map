@@ -40,6 +40,7 @@ create table if not exists public.stories (
   hometown text not null,
   country_code text,
   story text,
+  share_text text,
   audio_url text,
   story_type text check (story_type in ('text', 'audio', 'both', 'profile')),
   graduation_year integer,
@@ -61,6 +62,7 @@ alter table public.stories
   add column if not exists pronouns text,
   add column if not exists country_code text,
   add column if not exists audio_url text,
+  add column if not exists share_text text,
   add column if not exists story_type text,
   add column if not exists graduation_year integer,
   add column if not exists social_links jsonb;
@@ -92,7 +94,21 @@ begin
   ) then
     alter table public.stories
       add constraint stories_story_length_check
-      check (story is null or char_length(story) <= 300) not valid;
+      check (
+        story is null
+        or array_length(regexp_split_to_array(trim(story), E'\\s+'), 1) <= 600
+      ) not valid;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'stories_share_text_length_check'
+  ) then
+    alter table public.stories
+      add constraint stories_share_text_length_check
+      check (
+        share_text is null
+        or array_length(regexp_split_to_array(trim(share_text), E'\\s+'), 1) <= 100
+      ) not valid;
   end if;
 
   if not exists (

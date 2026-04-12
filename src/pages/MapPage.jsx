@@ -3,11 +3,19 @@ import Header from "../Header";
 import Map from "../Map";
 import StorySidebar from "../StorySidebar";
 import AddStoryModal from "../AddStoryModal";
+import StoryCardModal from "../components/StoryCardModal";
+import AudioPlayerModal from "../components/AudioPlayerModal";
+import StoryReaderModal from "../components/StoryReaderModal";
 import { useArcLayer } from "../hooks/useArcLayer";
 import { geocodeHometown } from "../hometownSearch";
 import { useAuth } from "../auth/AuthContext";
 import { useRouter } from "../router";
 import { supabase, supabaseConfigError } from "../supabaseClient";
+import {
+  downloadStoryCardBlob,
+  generateStoryCard,
+  STORY_CARD_FILENAME,
+} from "../utils/generateStoryCard";
 import {
   PRONOUN_OPTIONS,
   normalizeSocialLinks,
@@ -26,8 +34,22 @@ import {
   sanitizeStoryRows,
 } from "../storyUtils";
 
-const STORY_SELECT_FIELDS =
+const STORY_SELECT_FIELDS_BASE =
   "id,name,pronouns,hometown,country_code,story,audio_url,story_type,graduation_year,social_links,latitude,longitude,created_at,user_id";
+const STORY_SELECT_FIELDS_WITH_SHARE_TEXT =
+  "id,name,pronouns,hometown,country_code,story,share_text,audio_url,story_type,graduation_year,social_links,latitude,longitude,created_at,user_id";
+
+function getStorySelectFields(shouldIncludeShareText) {
+  return shouldIncludeShareText
+    ? STORY_SELECT_FIELDS_WITH_SHARE_TEXT
+    : STORY_SELECT_FIELDS_BASE;
+}
+
+function isMissingShareTextColumnError(error) {
+  const detailText =
+    `${error?.message || ""} ${error?.details || ""}`.toLowerCase();
+  return detailText.includes("share_text") && detailText.includes("column");
+}
 
 function includesQuery(value, query) {
   return typeof value === "string" && value.toLowerCase().includes(query);
@@ -64,6 +86,12 @@ export default function MapPage() {
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isStoryCardModalOpen, setIsStoryCardModalOpen] = useState(false);
+  const [storyCardBlob, setStoryCardBlob] = useState(null);
+  const [storyCardPreviewUrl, setStoryCardPreviewUrl] = useState("");
+  const [storyReaderStory, setStoryReaderStory] = useState(null);
+  const [audioPlayerStory, setAudioPlayerStory] = useState(null);
+  const [supportsShareText, setSupportsShareText] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [mapInstance, setMapInstance] = useState(null);
   const [selectedStoryId, setSelectedStoryId] = useState(null);
@@ -77,61 +105,93 @@ export default function MapPage() {
   const fetchRequestIdRef = useRef(0);
   const isSavingRef = useRef(false);
 
-  const fetchStories = useCallback(async ({ silent = false } = {}) => {
-    const requestId = ++fetchRequestIdRef.current;
-    if (!silent) setLoading(true);
-    setLoadError("");
+  useEffect(
+    () => () => {
+      if (storyCardPreviewUrl) {
+        URL.revokeObjectURL(storyCardPreviewUrl);
+      }
+    },
+    [storyCardPreviewUrl],
+  );
 
-    if (!supabase) {
-      const configMessage =
-        supabaseConfigError ||
-        "Supabase is not configured. Check your environment variables.";
-      setLoadError(configMessage);
-      if (!silent && requestId === fetchRequestIdRef.current) setLoading(false);
-      return { success: false, error: configMessage };
-    }
+  const fetchStories = useCallback(
+    async ({ silent = false } = {}) => {
+      const requestId = ++fetchRequestIdRef.current;
+      if (!silent) setLoading(true);
+      setLoadError("");
 
-    try {
-      const { data, error: fetchError } = await supabase
-        .from("stories")
-        .select(STORY_SELECT_FIELDS)
-        .order("created_at", { ascending: false })
-        .limit(STORIES_FETCH_LIMIT);
-
-      if (requestId !== fetchRequestIdRef.current) {
-        return { success: false, stale: true };
+      if (!supabase) {
+        const configMessage =
+          supabaseConfigError ||
+          "Supabase is not configured. Check your environment variables.";
+        setLoadError(configMessage);
+        if (!silent && requestId === fetchRequestIdRef.current)
+          setLoading(false);
+        return { success: false, error: configMessage };
       }
 
-      if (fetchError) {
-        console.error("Error loading stories:", fetchError);
-        setLoadError("Could not load stories right now.");
-        return { success: false, error: fetchError.message || "Fetch failed" };
-      }
+      try {
+        const selectFields = getStorySelectFields(supportsShareText);
+        let { data, error: fetchError } = await supabase
+          .from("stories")
+          .select(selectFields)
+          .order("created_at", { ascending: false })
+          .limit(STORIES_FETCH_LIMIT);
 
-      const sanitizedStories = sanitizeStoryRows(data || []);
-      setStories(sanitizedStories);
-      setSelectedStoryId((currentId) =>
-        sanitizedStories.some((story) => story.id === currentId)
-          ? currentId
-          : null,
-      );
+        if (
+          fetchError &&
+          supportsShareText &&
+          isMissingShareTextColumnError(fetchError)
+        ) {
+          setSupportsShareText(false);
+          const fallbackResult = await supabase
+            .from("stories")
+            .select(getStorySelectFields(false))
+            .order("created_at", { ascending: false })
+            .limit(STORIES_FETCH_LIMIT);
+          data = fallbackResult.data;
+          fetchError = fallbackResult.error;
+        }
 
-      return { success: true };
-    } catch (unexpectedError) {
-      if (requestId === fetchRequestIdRef.current) {
-        console.error("Unexpected error loading stories:", unexpectedError);
-        setLoadError("Unexpected error while loading stories.");
+        if (requestId !== fetchRequestIdRef.current) {
+          return { success: false, stale: true };
+        }
+
+        if (fetchError) {
+          console.error("Error loading stories:", fetchError);
+          setLoadError("Could not load stories right now.");
+          return {
+            success: false,
+            error: fetchError.message || "Fetch failed",
+          };
+        }
+
+        const sanitizedStories = sanitizeStoryRows(data || []);
+        setStories(sanitizedStories);
+        setSelectedStoryId((currentId) =>
+          sanitizedStories.some((story) => story.id === currentId)
+            ? currentId
+            : null,
+        );
+
+        return { success: true };
+      } catch (unexpectedError) {
+        if (requestId === fetchRequestIdRef.current) {
+          console.error("Unexpected error loading stories:", unexpectedError);
+          setLoadError("Unexpected error while loading stories.");
+        }
+        return {
+          success: false,
+          error: unexpectedError?.message || "Unexpected fetch error",
+        };
+      } finally {
+        if (!silent && requestId === fetchRequestIdRef.current) {
+          setLoading(false);
+        }
       }
-      return {
-        success: false,
-        error: unexpectedError?.message || "Unexpected fetch error",
-      };
-    } finally {
-      if (!silent && requestId === fetchRequestIdRef.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [supportsShareText],
+  );
 
   useEffect(() => {
     fetchStories();
@@ -240,6 +300,7 @@ export default function MapPage() {
         ? String(userProfileStory.graduation_year)
         : "",
       story: userProfileStory.story || "",
+      shareText: userProfileStory.share_text || "",
       socialLinks: Array.isArray(userProfileStory.social_links)
         ? userProfileStory.social_links.map((link) => ({
             platform: link?.platform || "",
@@ -247,6 +308,7 @@ export default function MapPage() {
           }))
         : [],
       hasAudio: Boolean(userProfileStory.audio_url),
+      audioUrl: userProfileStory.audio_url || "",
     };
   }, [userProfileStory]);
 
@@ -287,6 +349,7 @@ export default function MapPage() {
     (story) => {
       if (!story) return;
       setSelectedStoryId(story.id);
+      setMapFocusTarget({ storyId: story.id, token: Date.now() });
       selectPin(story);
     },
     [selectPin],
@@ -306,6 +369,81 @@ export default function MapPage() {
     clearArcs();
   }, [clearArcs]);
 
+  const handleOpenStoryReader = useCallback(async (story) => {
+    if (!story) return;
+    setStoryReaderStory(story);
+
+    if (!supabase || !story.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("stories")
+        .select("id,story")
+        .eq("id", story.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Could not load full story text:", error);
+        return;
+      }
+
+      if (data?.id === story.id && typeof data.story === "string") {
+        setStoryReaderStory((currentStory) => {
+          if (!currentStory || currentStory.id !== story.id)
+            return currentStory;
+          return { ...currentStory, story: data.story };
+        });
+      }
+    } catch (fetchError) {
+      console.error("Unexpected full story fetch error:", fetchError);
+    }
+  }, []);
+
+  const handleCloseStoryReader = useCallback(() => {
+    setStoryReaderStory(null);
+  }, []);
+
+  const handleOpenAudioPlayer = useCallback((story) => {
+    if (!story) return;
+    setAudioPlayerStory(story);
+  }, []);
+
+  const handleCloseAudioPlayer = useCallback(() => {
+    setAudioPlayerStory(null);
+  }, []);
+
+  const closeStoryCardModal = useCallback(() => {
+    setIsStoryCardModalOpen(false);
+    setStoryCardBlob(null);
+    setStoryCardPreviewUrl((currentUrl) => {
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+      return "";
+    });
+  }, []);
+
+  const handleStoryCardDownload = useCallback(() => {
+    if (!storyCardBlob) return;
+    downloadStoryCardBlob(storyCardBlob, STORY_CARD_FILENAME);
+  }, [storyCardBlob]);
+
+  const handleShareStory = useCallback(async (story) => {
+    if (!story) return;
+
+    try {
+      const generatedBlob = await generateStoryCard(story);
+
+      setStoryCardBlob(generatedBlob);
+      setStoryCardPreviewUrl((currentUrl) => {
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+        return URL.createObjectURL(generatedBlob);
+      });
+      setIsStoryCardModalOpen(true);
+    } catch (error) {
+      console.error("Error generating story card:", error);
+      setSubmitError("Could not generate your story card. Please try again.");
+    }
+  }, []);
+
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
   }, []);
@@ -319,6 +457,30 @@ export default function MapPage() {
       console.error("Uploaded audio cleanup failed:", cleanupError);
     }
   }, []);
+
+  const getAudioStoragePathFromUrl = useCallback((audioPublicUrl) => {
+    if (!audioPublicUrl) return "";
+    try {
+      const parsedUrl = new URL(audioPublicUrl);
+      const bucketSegment = `/${AUDIO_BUCKET}/`;
+      const segmentIndex = parsedUrl.pathname.indexOf(bucketSegment);
+      if (segmentIndex === -1) return "";
+      return decodeURIComponent(
+        parsedUrl.pathname.slice(segmentIndex + bucketSegment.length),
+      );
+    } catch {
+      return "";
+    }
+  }, []);
+
+  const cleanupStoredAudioByUrl = useCallback(
+    async (audioPublicUrl) => {
+      const filePath = getAudioStoragePathFromUrl(audioPublicUrl);
+      if (!filePath) return;
+      await cleanupUploadedAudio(filePath);
+    },
+    [cleanupUploadedAudio, getAudioStoragePathFromUrl],
+  );
 
   const handleSubmitStory = async (values) => {
     if (isSavingRef.current) {
@@ -409,13 +571,29 @@ export default function MapPage() {
 
       let existingProfile = userProfileStory;
       if (!existingProfile) {
-        const { data: existingRows, error: existingLookupError } =
-          await supabase
+        const lookupFields = getStorySelectFields(supportsShareText);
+        let { data: existingRows, error: existingLookupError } = await supabase
+          .from("stories")
+          .select(lookupFields)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (
+          existingLookupError &&
+          supportsShareText &&
+          isMissingShareTextColumnError(existingLookupError)
+        ) {
+          setSupportsShareText(false);
+          const fallbackLookup = await supabase
             .from("stories")
-            .select(STORY_SELECT_FIELDS)
+            .select(getStorySelectFields(false))
             .eq("user_id", user.id)
             .order("created_at", { ascending: false })
             .limit(1);
+          existingRows = fallbackLookup.data;
+          existingLookupError = fallbackLookup.error;
+        }
 
         if (existingLookupError) {
           console.error(
@@ -440,7 +618,11 @@ export default function MapPage() {
       }
 
       const resolvedAudioUrl =
-        audioUrl || sanitizeAudioUrl(existingProfile?.audio_url);
+        audioUrl ||
+        (normalizedValues.removeAudio
+          ? null
+          : sanitizeAudioUrl(existingProfile?.audio_url));
+      const previousAudioUrl = sanitizeAudioUrl(existingProfile?.audio_url);
       const hasText = Boolean(normalizedValues.story);
       const hasAudio = Boolean(resolvedAudioUrl);
 
@@ -458,32 +640,54 @@ export default function MapPage() {
         latitude: hometownLocation.latitude,
         longitude: hometownLocation.longitude,
       };
+      if (supportsShareText) {
+        payload.share_text = normalizedValues.shareText || null;
+      }
 
       let savedData = null;
       let saveError = null;
       let wasUpdate = false;
+      const persistProfile = async ({ includeShareText }) => {
+        const persistedPayload = includeShareText
+          ? payload
+          : Object.fromEntries(
+              Object.entries(payload).filter(([key]) => key !== "share_text"),
+            );
+        const selectFields = getStorySelectFields(includeShareText);
 
-      if (existingProfile?.id) {
-        wasUpdate = true;
-        const { data: updatedData, error: updateError } = await supabase
-          .from("stories")
-          .update(payload)
-          .eq("id", existingProfile.id)
-          .eq("user_id", user.id)
-          .select(STORY_SELECT_FIELDS)
-          .single();
+        if (existingProfile?.id) {
+          wasUpdate = true;
+          const { data: updatedData, error: updateError } = await supabase
+            .from("stories")
+            .update(persistedPayload)
+            .eq("id", existingProfile.id)
+            .eq("user_id", user.id)
+            .select(selectFields)
+            .single();
+          return { data: updatedData, error: updateError };
+        }
 
-        savedData = updatedData;
-        saveError = updateError;
-      } else {
         const { data: insertedData, error: insertError } = await supabase
           .from("stories")
-          .insert(payload)
-          .select(STORY_SELECT_FIELDS)
+          .insert(persistedPayload)
+          .select(selectFields)
           .single();
+        return { data: insertedData, error: insertError };
+      };
 
-        savedData = insertedData;
-        saveError = insertError;
+      ({ data: savedData, error: saveError } = await persistProfile({
+        includeShareText: supportsShareText,
+      }));
+
+      if (
+        saveError &&
+        supportsShareText &&
+        isMissingShareTextColumnError(saveError)
+      ) {
+        setSupportsShareText(false);
+        ({ data: savedData, error: saveError } = await persistProfile({
+          includeShareText: false,
+        }));
       }
 
       if (saveError) {
@@ -534,6 +738,10 @@ export default function MapPage() {
         setSelectedStoryId(savedStory.id);
         setMapFocusTarget({ storyId: savedStory.id, token: Date.now() });
         selectPin(savedStory);
+      }
+
+      if (previousAudioUrl && previousAudioUrl !== resolvedAudioUrl) {
+        await cleanupStoredAudioByUrl(previousAudioUrl);
       }
 
       closeModal();
@@ -627,6 +835,9 @@ export default function MapPage() {
             stories={filteredStories}
             selectedStoryId={selectedStoryId}
             onMarkerSelect={handleMarkerSelect}
+            onReadStory={handleOpenStoryReader}
+            onListenAudio={handleOpenAudioPlayer}
+            onShareStory={handleShareStory}
             focusTarget={mapFocusTarget}
             onMapReady={setMapInstance}
             onMapBackgroundClick={handleMapBackgroundClick}
@@ -685,9 +896,29 @@ export default function MapPage() {
         isOpen={isModalOpen}
         onClose={closeModal}
         onSubmit={handleSubmitStory}
+        onShareStory={handleShareStory}
         isSaving={isSaving}
         initialValues={profileInitialValues}
         hasExistingProfile={Boolean(userProfileStory)}
+      />
+
+      <StoryCardModal
+        isOpen={isStoryCardModalOpen}
+        imageUrl={storyCardPreviewUrl}
+        onDownload={handleStoryCardDownload}
+        onClose={closeStoryCardModal}
+      />
+
+      <StoryReaderModal
+        isOpen={Boolean(storyReaderStory)}
+        story={storyReaderStory}
+        onClose={handleCloseStoryReader}
+      />
+
+      <AudioPlayerModal
+        isOpen={Boolean(audioPlayerStory)}
+        story={audioPlayerStory}
+        onClose={handleCloseAudioPlayer}
       />
     </div>
   );

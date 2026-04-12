@@ -1,4 +1,5 @@
-export const STORY_MAX_LENGTH = 300;
+export const STORY_MAX_WORDS = 600;
+export const SHARE_TEXT_MAX_WORDS = 100;
 export const NAME_MAX_LENGTH = 80;
 export const HOMETOWN_MAX_LENGTH = 120;
 export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
@@ -75,6 +76,20 @@ export function sanitizeText(value, maxLength) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.slice(0, maxLength);
+}
+
+export function getWordCount(value) {
+  if (typeof value !== "string") return 0;
+  const normalized = value.trim();
+  if (!normalized) return 0;
+  return normalized.split(/\s+/).length;
+}
+
+export function sanitizeStoryText(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed;
 }
 
 export function sanitizeGraduationYear(value) {
@@ -268,13 +283,15 @@ export function normalizeSubmissionValues(values) {
   return {
     name: sanitizeText(values?.name, NAME_MAX_LENGTH),
     hometown: sanitizeText(values?.hometown, HOMETOWN_MAX_LENGTH),
-    story: sanitizeText(values?.story, STORY_MAX_LENGTH),
+    story: sanitizeStoryText(values?.story),
+    shareText: sanitizeStoryText(values?.shareText),
     graduationYear: sanitizeGraduationYear(values?.graduationYear),
     pronounsSelection,
     pronouns: resolvePronouns(pronounsSelection, values?.pronounsOther),
     hometownLocation: sanitizeHometownLocation(values?.hometownLocation),
     socialLinks: normalizeSocialInputEntries(values?.socialLinks),
     audioFile: values?.audioFile || null,
+    removeAudio: Boolean(values?.removeAudio),
   };
 }
 
@@ -336,6 +353,14 @@ export function validateStorySubmission(values) {
 
   if (values?.pronounsSelection === "other" && !values?.pronouns) {
     return "Please enter your pronouns in the Other field.";
+  }
+
+  if (getWordCount(values?.story) > STORY_MAX_WORDS) {
+    return `Story must be ${STORY_MAX_WORDS} words or fewer.`;
+  }
+
+  if (getWordCount(values?.shareText) > SHARE_TEXT_MAX_WORDS) {
+    return `Share text must be ${SHARE_TEXT_MAX_WORDS} words or fewer.`;
   }
 
   const socialError = getSocialLinksValidationError(values?.socialLinks);

@@ -1,0 +1,64 @@
+.audio-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.audio-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 27, 45, 0.72);
+}
+
+.audio-modal-panel {
+  position: relative;
+  width: min(640px, calc(100vw - 2rem));
+  border-radius: 14px;
+  border: 1px solid rgba(51, 78, 87, 0.24);
+  background: #f2f9f9;
+  box-shadow: 0 14px 36px rgba(15, 27, 45, 0.34);
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.audio-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.audio-modal-header h3 {
+  margin: 0;
+  font-size: 1.02rem;
+  color: #1b2b31;
+}
+
+.audio-modal-close {
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #deeeef;
+  color: #2e434b;
+  cursor: pointer;
+}
+
+.audio-modal-meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #375d67;
+}
+
+.audio-modal-meta--muted {
+  color: rgba(46, 67, 75, 0.8);
+}
+
+.audio-modal-player {
+  width: 100%;
+}

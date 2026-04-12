@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AUDIO_ACCEPT_ATTR,
   AUDIO_HELPER_TEXT,
@@ -11,7 +11,9 @@ import {
   SOCIAL_LINK_MAX_COUNT,
   SOCIAL_LINK_MAX_LENGTH,
   SOCIAL_PLATFORM_OPTIONS,
-  STORY_MAX_LENGTH,
+  SHARE_TEXT_MAX_WORDS,
+  STORY_MAX_WORDS,
+  getWordCount,
   getAudioValidationError,
   normalizeSubmissionValues,
   validateStorySubmission,
@@ -28,8 +30,10 @@ function normalizeInitialValues(initialValues) {
       hometownLocation: null,
       graduationYear: "",
       story: "",
+      shareText: "",
       socialLinks: [],
       hasAudio: false,
+      audioUrl: "",
     };
   }
 
@@ -41,17 +45,28 @@ function normalizeInitialValues(initialValues) {
     hometownLocation: initialValues.hometownLocation || null,
     graduationYear: initialValues.graduationYear || "",
     story: initialValues.story || "",
+    shareText: initialValues.shareText || "",
     socialLinks: Array.isArray(initialValues.socialLinks)
       ? initialValues.socialLinks
       : [],
     hasAudio: Boolean(initialValues.hasAudio),
+    audioUrl:
+      typeof initialValues.audioUrl === "string" ? initialValues.audioUrl : "",
   };
+}
+
+function limitToWordCount(value, maxWords) {
+  if (typeof value !== "string") return "";
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return value;
+  return words.slice(0, maxWords).join(" ");
 }
 
 export default function AddStoryModal({
   isOpen,
   onClose,
   onSubmit,
+  onShareStory,
   isSaving,
   initialValues,
   hasExistingProfile,
@@ -66,11 +81,15 @@ export default function AddStoryModal({
   const [isSearchingHometown, setIsSearchingHometown] = useState(false);
   const [graduationYear, setGraduationYear] = useState("");
   const [story, setStory] = useState("");
+  const [shareText, setShareText] = useState("");
   const [socialLinks, setSocialLinks] = useState([]);
   const [audioFile, setAudioFile] = useState(null);
   const [initialHadAudio, setInitialHadAudio] = useState(false);
+  const [initialAudioUrl, setInitialAudioUrl] = useState("");
   const [hasSavedAudio, setHasSavedAudio] = useState(false);
+  const [removeSavedAudio, setRemoveSavedAudio] = useState(false);
   const [error, setError] = useState("");
+  const audioInputRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -86,10 +105,13 @@ export default function AddStoryModal({
     setIsSearchingHometown(false);
     setGraduationYear(normalizedInitialValues.graduationYear);
     setStory(normalizedInitialValues.story);
+    setShareText(normalizedInitialValues.shareText);
     setSocialLinks(normalizedInitialValues.socialLinks);
     setAudioFile(null);
     setInitialHadAudio(normalizedInitialValues.hasAudio);
+    setInitialAudioUrl(normalizedInitialValues.audioUrl);
     setHasSavedAudio(normalizedInitialValues.hasAudio);
+    setRemoveSavedAudio(false);
     setError("");
   }, [isOpen, initialValues]);
 
@@ -151,8 +173,10 @@ export default function AddStoryModal({
       hometownLocation: selectedHometown,
       graduationYear,
       story,
+      shareText,
       socialLinks,
       audioFile,
+      removeAudio: removeSavedAudio && !audioFile,
     });
     const validationError = validateStorySubmission(values);
 
@@ -194,7 +218,7 @@ export default function AddStoryModal({
 
     if (!selectedFile) {
       setAudioFile(null);
-      setHasSavedAudio(initialHadAudio);
+      setHasSavedAudio(removeSavedAudio ? false : initialHadAudio);
       if (error) setError("");
       return;
     }
@@ -209,6 +233,28 @@ export default function AddStoryModal({
 
     setAudioFile(selectedFile);
     setHasSavedAudio(false);
+    setRemoveSavedAudio(false);
+    if (error) setError("");
+  };
+
+  const handleRemoveSavedAudio = () => {
+    setAudioFile(null);
+    setHasSavedAudio(false);
+    setRemoveSavedAudio(true);
+    if (audioInputRef.current) audioInputRef.current.value = "";
+    if (error) setError("");
+  };
+
+  const handleRestoreSavedAudio = () => {
+    setRemoveSavedAudio(false);
+    setHasSavedAudio(initialHadAudio);
+    if (error) setError("");
+  };
+
+  const handleClearSelectedAudio = () => {
+    setAudioFile(null);
+    setHasSavedAudio(initialHadAudio);
+    if (audioInputRef.current) audioInputRef.current.value = "";
     if (error) setError("");
   };
 
@@ -248,6 +294,33 @@ export default function AddStoryModal({
         linkIndex !== rowIndex &&
         (link.platform || "").toLowerCase() === platformValue,
     );
+
+  const handleShareMyStory = () => {
+    if (!onShareStory) return;
+
+    const parsedGraduationYear = Number(graduationYear);
+    const normalizedGraduationYear = Number.isInteger(parsedGraduationYear)
+      ? parsedGraduationYear
+      : null;
+    const resolvedPronouns =
+      pronounsSelection === "other" ? pronounsOther : pronounsSelection;
+
+    onShareStory({
+      name,
+      pronouns: resolvedPronouns,
+      hometown,
+      country_code:
+        selectedHometown?.countryCode ||
+        initialValues?.hometownLocation?.countryCode ||
+        null,
+      story,
+      share_text: shareText,
+      graduation_year: normalizedGraduationYear,
+    });
+  };
+
+  const storyWordCount = getWordCount(story);
+  const shareTextWordCount = getWordCount(shareText);
 
   if (!isOpen) return null;
 
@@ -367,12 +440,33 @@ export default function AddStoryModal({
               setStory(event.target.value);
               if (error) setError("");
             }}
-            maxLength={STORY_MAX_LENGTH}
             placeholder="Share a short story..."
             rows={5}
           />
           <p className="char-count">
-            {story.length}/{STORY_MAX_LENGTH}
+            {storyWordCount}/{STORY_MAX_WORDS} words
+          </p>
+          <p className="helper-text">Up to {STORY_MAX_WORDS} words.</p>
+
+          <label htmlFor="shareText">Share Text (for card, optional)</label>
+          <textarea
+            id="shareText"
+            value={shareText}
+            onChange={(event) => {
+              setShareText(
+                limitToWordCount(event.target.value, SHARE_TEXT_MAX_WORDS),
+              );
+              if (error) setError("");
+            }}
+            placeholder="Write up to 100 words for your share card..."
+            rows={3}
+          />
+          <p className="char-count">
+            {shareTextWordCount}/{SHARE_TEXT_MAX_WORDS} words
+          </p>
+          <p className="helper-text">
+            This text is used on your Share card. If empty, your Text Story is
+            used.
           </p>
 
           <label htmlFor="graduationYear">
@@ -460,6 +554,7 @@ export default function AddStoryModal({
           <label htmlFor="audio">Audio Story (optional)</label>
           <input
             id="audio"
+            ref={audioInputRef}
             type="file"
             accept={AUDIO_ACCEPT_ATTR}
             onChange={handleAudioChange}
@@ -470,15 +565,79 @@ export default function AddStoryModal({
           </p>
           <p className="helper-text">{AUDIO_HELPER_TEXT}</p>
           {hasSavedAudio && !audioFile && (
-            <p className="file-meta">
-              Current audio is saved. Upload a new file to replace it.
-            </p>
+            <>
+              <p className="file-meta">
+                Current audio is saved. Upload a new file to replace it, or
+                remove it.
+              </p>
+              {initialAudioUrl && (
+                <audio
+                  controls
+                  src={initialAudioUrl}
+                  style={{ width: "100%", margin: "0.35rem 0 0.45rem" }}
+                />
+              )}
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRemoveSavedAudio}
+                disabled={isSaving}
+                style={{ marginBottom: "0.45rem" }}
+              >
+                Remove current audio
+              </button>
+            </>
           )}
-          {audioFile && <p className="file-meta">Selected: {audioFile.name}</p>}
+          {removeSavedAudio && !audioFile && (
+            <>
+              <p className="file-meta">
+                Current audio will be removed when you save.
+              </p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRestoreSavedAudio}
+                disabled={isSaving}
+                style={{ marginBottom: "0.45rem" }}
+              >
+                Keep current audio
+              </button>
+            </>
+          )}
+          {audioFile && (
+            <>
+              <p className="file-meta">Selected: {audioFile.name}</p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleClearSelectedAudio}
+                disabled={isSaving}
+                style={{ marginBottom: "0.45rem" }}
+              >
+                Clear selected audio
+              </button>
+            </>
+          )}
 
           {error && <p className="form-error">{error}</p>}
 
           <div className="modal-actions">
+            {onShareStory && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleShareMyStory}
+                disabled={isSaving}
+                style={{
+                  marginRight: "auto",
+                  border: "1px solid rgba(232, 115, 74, 0.38)",
+                  color: "#c75c38",
+                  background: "rgba(232, 115, 74, 0.12)",
+                }}
+              >
+                Share my story
+              </button>
+            )}
             <button
               type="button"
               className="btn-secondary"

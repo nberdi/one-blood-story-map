@@ -1,0 +1,49 @@
+.story-card-modal-root {
+  position: absolute;
+  inset: 0;
+  min-height: 100vh;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.story-card-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 27, 45, 0.75);
+}
+
+.story-card-modal-panel {
+  position: relative;
+  width: min(640px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(232, 115, 74, 0.35);
+  background: #f2f9f9;
+  box-shadow: 0 14px 36px rgba(15, 27, 45, 0.38);
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.story-card-modal-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1b2b31;
+}
+
+.story-card-modal-panel img {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(51, 78, 87, 0.2);
+  background: #fff;
+}
+
+.story-card-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

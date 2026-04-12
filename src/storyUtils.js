@@ -5,10 +5,10 @@ import {
   NAME_MAX_LENGTH,
   PRONOUNS_MAX_LENGTH,
   SOCIAL_PLATFORM_OPTIONS,
-  STORY_MAX_LENGTH,
   isValidGraduationYear,
   normalizeSocialLinks,
   sanitizeGraduationYear,
+  sanitizeStoryText,
   sanitizeText,
 } from "./storyValidation";
 
@@ -62,7 +62,8 @@ export function sanitizeStoryRow(row) {
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180)
     return null;
 
-  const story = sanitizeText(row.story, STORY_MAX_LENGTH);
+  const story = sanitizeStoryText(row.story);
+  const shareText = sanitizeStoryText(row.share_text);
   const audioUrl = sanitizeAudioUrl(row.audio_url);
   const parsedGradYear = sanitizeGraduationYear(row.graduation_year);
   const graduationYear = isValidGraduationYear(parsedGradYear)
@@ -83,6 +84,7 @@ export function sanitizeStoryRow(row) {
     hometown: sanitizeText(row.hometown, HOMETOWN_MAX_LENGTH),
     country_code: sanitizeCountryCode(row.country_code),
     story,
+    share_text: shareText,
     audio_url: audioUrl,
     story_type:
       row.story_type || getStoryType(Boolean(story), Boolean(audioUrl)),
@@ -160,7 +162,7 @@ export function formatStoryDate(createdAt) {
 }
 
 export function getStoryPreview(storyText, hasAudio, maxLength = 100) {
-  const cleanedStory = sanitizeText(storyText, STORY_MAX_LENGTH);
+  const cleanedStory = sanitizeStoryText(storyText);
   if (!cleanedStory) {
     return hasAudio
       ? "Audio story available. Press play to listen."

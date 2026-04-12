@@ -16,8 +16,6 @@ import {
   getGraduationYearLabel,
   getHometownWithFlag,
   getSocialPlatformLabel,
-  getStoryTypeFromRecord,
-  getStoryTypeLabel,
   sanitizeAudioUrl,
 } from "./storyUtils";
 
@@ -85,6 +83,9 @@ export default function StoryMap({
   stories,
   selectedStoryId,
   onMarkerSelect,
+  onReadStory,
+  onListenAudio,
+  onShareStory,
   focusTarget,
   onMapReady,
   onMapBackgroundClick,
@@ -115,7 +116,6 @@ export default function StoryMap({
       {stories.map((story) => {
         const hasTextStory = Boolean(story.story?.trim());
         const safeAudioUrl = sanitizeAudioUrl(story.audio_url);
-        const storyType = getStoryTypeFromRecord(story);
         const graduationLabel = getGraduationYearLabel(story.graduation_year);
         const isSelected = selectedStoryId === story.id;
 
@@ -139,11 +139,6 @@ export default function StoryMap({
               <div className="popup-card">
                 <div className="popup-card__top">
                   <h3>{story.name?.trim() || "Anonymous"}</h3>
-                  {storyType !== "text" && (
-                    <span className="story-badge">
-                      {getStoryTypeLabel(storyType)}
-                    </span>
-                  )}
                 </div>
                 {story.pronouns && (
                   <p className="popup-card__date">{story.pronouns}</p>
@@ -156,8 +151,18 @@ export default function StoryMap({
                   <p className="popup-card__date">{graduationLabel}</p>
                 )}
 
-                {hasTextStory ? (
-                  <p className="popup-card__story">{story.story}</p>
+                {hasTextStory && onReadStory ? (
+                  <button
+                    type="button"
+                    className="popup-card__read-btn"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onReadStory(story);
+                    }}
+                  >
+                    Read the story
+                  </button>
                 ) : safeAudioUrl ? (
                   <p className="popup-card__story popup-card__story--muted">
                     Audio story only. Press play to listen.
@@ -167,11 +172,43 @@ export default function StoryMap({
                     Profile added. No text or audio story yet.
                   </p>
                 )}
-
                 {safeAudioUrl && (
-                  <audio className="popup-audio" controls src={safeAudioUrl}>
-                    Your browser does not support the audio element.
-                  </audio>
+                  <button
+                    type="button"
+                    className="popup-card__listen-btn"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (onListenAudio) onListenAudio(story);
+                    }}
+                  >
+                    Listen to audio
+                  </button>
+                )}
+                {onShareStory && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onShareStory(story);
+                    }}
+                    style={{
+                      display: "block",
+                      marginTop:
+                        hasTextStory && onReadStory ? "0.82rem" : "0.55rem",
+                      border: "none",
+                      borderRadius: "999px",
+                      padding: "0.28rem 0.62rem",
+                      fontSize: "0.74rem",
+                      fontWeight: 700,
+                      background: "#E8734A",
+                      color: "#FFFFFF",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Share
+                  </button>
                 )}
 
                 {Array.isArray(story.social_links) &&
