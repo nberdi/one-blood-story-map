@@ -8,6 +8,12 @@ export default function PublicTopNav({ user, onLogout }) {
       </AppLink>
 
       <nav className="public-nav__actions">
+        <AppLink to="/" className="public-nav__link">
+          Intro
+        </AppLink>
+        <AppLink to="/founders" className="public-nav__link">
+          Founders
+        </AppLink>
         <AppLink to="/map" className="public-nav__link">
           Explore Map
         </AppLink>

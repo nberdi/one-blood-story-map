@@ -47,8 +47,8 @@ a {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  padding: 0.9rem 1.2rem;
+  gap: 1.25rem;
+  padding: 0.92rem 1.3rem;
   border-bottom: 1px solid var(--line);
   background: rgba(242, 249, 249, 0.96);
   backdrop-filter: blur(8px);
@@ -64,7 +64,7 @@ a {
 .public-nav__actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.72rem;
 }
 
 .public-nav__link {
@@ -343,6 +343,124 @@ a {
   border-color: rgba(55, 93, 103, 0.5);
 }
 
+.founders-main {
+  flex: 1;
+  width: 100%;
+  padding: 0.95rem;
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.founders-intro,
+.founders-team,
+.founders-tech {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(242, 249, 249, 0.96);
+  box-shadow: 0 10px 24px rgba(51, 78, 87, 0.08);
+  padding: 1rem 1.1rem;
+}
+
+.founders-intro h1 {
+  margin: 0.34rem 0 0;
+  font-size: clamp(1.2rem, 3vw, 1.8rem);
+  color: var(--theme-900);
+}
+
+.founders-intro p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+}
+
+.founders-team h2,
+.founders-tech h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.founders-team-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.founders-member-card {
+  border: 1px solid var(--theme-200);
+  border-radius: 12px;
+  background: var(--theme-50);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.founders-member-photo {
+  width: 100%;
+  aspect-ratio: 3.8 / 4;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.founders-member-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  border-radius: 9px;
+}
+
+.founders-member-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--theme-900);
+}
+
+.founders-member-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.founders-linkedin-btn {
+  width: fit-content;
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #ffffff;
+  border: 1px solid #0a66c2;
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  background: #0a66c2;
+  transition: background-color 0.15s ease;
+}
+
+.founders-linkedin-btn:hover {
+  background: #004182;
+}
+
+.founders-member-link-placeholder {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.founders-tech-list {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.founders-tech-chip {
+  border-radius: 999px;
+  border: 1px solid var(--theme-300);
+  background: var(--theme-100);
+  color: var(--theme-800);
+  padding: 0.24rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .auth-main {
   flex: 1;
   display: grid;
@@ -454,8 +572,8 @@ a {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  padding: 0.88rem 1.1rem;
+  gap: 1.25rem;
+  padding: 0.92rem 1.24rem;
   border-bottom: 1px solid var(--line);
   background: rgba(242, 249, 249, 0.95);
   backdrop-filter: blur(8px);
@@ -480,7 +598,7 @@ a {
 .app-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.62rem;
 }
 
 .header-add-btn {
@@ -1114,6 +1232,10 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .founders-team-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .app-main {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(250px, 42vh) minmax(0, 1fr);
@@ -1159,6 +1281,10 @@ a {
   }
 
   .social-link-row {
+    grid-template-columns: 1fr;
+  }
+
+  .founders-team-grid {
     grid-template-columns: 1fr;
   }
 }

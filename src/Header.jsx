@@ -16,6 +16,13 @@ export default function Header({
       </div>
 
       <div className="app-header-actions">
+        <AppLink to="/" className="header-link">
+          Intro
+        </AppLink>
+        <AppLink to="/founders" className="header-link">
+          Founders
+        </AppLink>
+
         <button
           type="button"
           className={`header-add-btn ${isAddMode ? "header-add-btn--active" : ""}`}
@@ -55,10 +62,6 @@ export default function Header({
             </button>
           </>
         )}
-
-        <AppLink to="/" className="header-link">
-          Intro
-        </AppLink>
       </div>
     </header>
   );

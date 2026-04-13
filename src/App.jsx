@@ -1,5 +1,6 @@
 import { AuthProvider } from "./auth/AuthContext";
 import { RouterProvider, useRouter } from "./router";
+import FoundersPage from "./pages/FoundersPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
@@ -18,6 +19,7 @@ function RouterView() {
   const path = normalizePath(location.pathname);
 
   if (path === "/") return <LandingPage />;
+  if (path === "/founders") return <FoundersPage />;
   if (path === "/map") return <MapPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/signup") return <SignupPage />;
