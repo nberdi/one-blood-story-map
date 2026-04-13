@@ -2,6 +2,14 @@
 
 One Blood Story Map is a React + Leaflet + Supabase app for sharing hometown stories across a global map.
 
+## Current features
+
+- Red Berea, KY home pin on the map
+- Closest and farthest distance highlights from Berea, KY
+- Distance Mode toggle to compare distance between two selected pins
+- Optional text story, share text, audio, and profile image per user
+- Read story, listen audio, share card, and see image actions from pin popups
+
 ## Setup
 
 1. Install dependencies:
@@ -19,6 +27,7 @@ One Blood Story Map is a React + Leaflet + Supabase app for sharing hometown sto
 ## App routes
 
 - `/` Landing page
+- `/founders` Founders page
 - `/map` Story map and browsing panel
 - `/login` Login page
 - `/signup` Sign up page
@@ -42,8 +51,11 @@ create table if not exists public.stories (
   story text,
   share_text text,
   audio_url text,
+  image_url text,
   story_type text check (story_type in ('text', 'audio', 'both', 'profile')),
   graduation_year integer,
+  majors text[] not null default '{}'::text[],
+  occupations text[] not null default '{}'::text[],
   social_links jsonb not null default '[]'::jsonb,
   latitude double precision not null,
   longitude double precision not null,
@@ -62,16 +74,31 @@ alter table public.stories
   add column if not exists pronouns text,
   add column if not exists country_code text,
   add column if not exists audio_url text,
+  add column if not exists image_url text,
   add column if not exists share_text text,
   add column if not exists story_type text,
   add column if not exists graduation_year integer,
+  add column if not exists majors text[],
+  add column if not exists occupations text[],
   add column if not exists social_links jsonb;
 
 update public.stories
 set social_links = '[]'::jsonb
 where social_links is null;
 
+update public.stories
+set majors = '{}'::text[]
+where majors is null;
+
+update public.stories
+set occupations = '{}'::text[]
+where occupations is null;
+
 alter table public.stories
+  alter column majors set default '{}'::text[],
+  alter column majors set not null,
+  alter column occupations set default '{}'::text[],
+  alter column occupations set not null,
   alter column social_links set default '[]'::jsonb,
   alter column social_links set not null;
 
@@ -247,8 +274,10 @@ Notes:
 
 ## Supabase storage setup
 
-1. In Supabase dashboard, go to `Storage` and create a public bucket named `story-audio`.
-2. If you use RLS for storage, allow reads and inserts for this bucket.
+1. In Supabase dashboard, create two public buckets:
+   - `story-audio`
+   - `story-images`
+2. If you use RLS for storage, allow read + insert + delete for both buckets.
 
 ```sql
 insert into storage.buckets (id, name, public)
@@ -267,6 +296,43 @@ for insert
 to authenticated
 with check (
   bucket_id = 'story-audio'
+  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+);
+
+create policy "Authenticated can delete story audio"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'story-audio'
+  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+);
+
+insert into storage.buckets (id, name, public)
+values ('story-images', 'story-images', true)
+on conflict (id) do nothing;
+
+create policy "Public can read story images"
+on storage.objects
+for select
+to public
+using (bucket_id = 'story-images');
+
+create policy "Authenticated can upload story images"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'story-images'
+  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+);
+
+create policy "Authenticated can delete story images"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'story-images'
   and auth.jwt() ->> 'email' ilike '%@berea.edu'
 );
 ```
