@@ -5,6 +5,7 @@ export const HOMETOWN_MAX_LENGTH = 120;
 export const MAJOR_MAX_LENGTH = 80;
 export const OCCUPATION_MAX_LENGTH = 80;
 export const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 export const GRAD_YEAR_MIN = 1900;
 export const GRAD_YEAR_MAX = new Date().getFullYear() + 10;
 export const SOCIAL_LINK_MAX_LENGTH = 200;
@@ -66,10 +67,28 @@ export const ALLOWED_AUDIO_MIME_TYPES = [
   "audio/webm",
   "audio/ogg",
 ];
+export const ALLOWED_IMAGE_EXTENSIONS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".gif",
+];
+export const ALLOWED_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
 
 export const AUDIO_ACCEPT_ATTR = ".mp3,.wav,.m4a,.aac,.webm,.ogg,audio/*";
 export const AUDIO_HELPER_TEXT =
   "Accepted formats: .mp3, .wav, .m4a, .aac, .webm, .ogg (max 10MB).";
+export const IMAGE_ACCEPT_ATTR =
+  ".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif";
+export const IMAGE_HELPER_TEXT =
+  "Accepted formats: .jpg, .jpeg, .png, .webp, .gif (max 8MB).";
 export const SOCIAL_HELPER_TEXT =
   "Add up to 3 links total: one each for Instagram, Facebook, and LinkedIn.";
 
@@ -319,6 +338,8 @@ export function normalizeSubmissionValues(values) {
     socialLinks: normalizeSocialInputEntries(values?.socialLinks),
     audioFile: values?.audioFile || null,
     removeAudio: Boolean(values?.removeAudio),
+    imageFile: values?.imageFile || null,
+    removeImage: Boolean(values?.removeImage),
   };
 }
 
@@ -346,6 +367,35 @@ export function getAudioValidationError(file) {
 
   if (file.size > MAX_AUDIO_BYTES) {
     return "Audio file is too large. Please upload a file up to 10MB.";
+  }
+
+  return "";
+}
+
+export function getImageValidationError(file) {
+  if (!file) return "";
+
+  const fileName = (file.name || "").toLowerCase();
+  const hasAllowedExtension = ALLOWED_IMAGE_EXTENSIONS.some((extension) =>
+    fileName.endsWith(extension),
+  );
+
+  if (!hasAllowedExtension) {
+    return "Unsupported image format. Use .jpg, .jpeg, .png, .webp, or .gif.";
+  }
+
+  const mimeType = (file.type || "").toLowerCase();
+  const hasAllowedMimeType =
+    Boolean(mimeType) &&
+    (ALLOWED_IMAGE_MIME_TYPES.includes(mimeType) ||
+      mimeType.startsWith("image/"));
+
+  if (!hasAllowedMimeType) {
+    return "Invalid image file type. Please choose a valid image file.";
+  }
+
+  if (file.size > MAX_IMAGE_BYTES) {
+    return "Image file is too large. Please upload a file up to 8MB.";
   }
 
   return "";
@@ -394,7 +444,13 @@ export function validateStorySubmission(values) {
   if (socialError) return socialError;
 
   if (values.audioFile) {
-    return getAudioValidationError(values.audioFile);
+    const audioError = getAudioValidationError(values.audioFile);
+    if (audioError) return audioError;
+  }
+
+  if (values.imageFile) {
+    const imageError = getImageValidationError(values.imageFile);
+    if (imageError) return imageError;
   }
 
   return "";

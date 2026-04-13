@@ -173,11 +173,17 @@ export async function generateStoryCard(story) {
     throw new Error("Canvas is not supported in this browser.");
   }
 
+  const hidePronouns = Boolean(story?.share_hide_pronouns);
+  const hideGraduation = Boolean(story?.share_hide_graduation);
   const name = getSafeText(story?.name, "Anonymous");
-  const pronouns = getSafeText(story?.pronouns, "Pronouns not listed");
+  const pronouns = hidePronouns
+    ? ""
+    : getSafeText(story?.pronouns, "Pronouns not listed");
   const hometown = getSafeText(story?.hometown, "Unknown hometown");
   const storyText = getShareTextOnly(story?.share_text);
-  const graduationText = getGraduationText(story?.graduation_year);
+  const graduationText = hideGraduation
+    ? ""
+    : getGraduationText(story?.graduation_year);
   const flag = getFlagFromCountryCode(story?.country_code);
 
   const backgroundGradient = ctx.createLinearGradient(0, 0, 0, CARD_SIZE);
@@ -213,13 +219,15 @@ export async function generateStoryCard(story) {
   ctx.font = `700 52px ${FONT_STACK}`;
   ctx.fillText(name, CARD_SIZE / 2, 392);
 
-  ctx.font = `500 22px ${FONT_STACK}`;
-  ctx.fillStyle = "#AABBCC";
-  ctx.fillText(pronouns, CARD_SIZE / 2, 470);
+  if (pronouns) {
+    ctx.font = `500 22px ${FONT_STACK}`;
+    ctx.fillStyle = "#AABBCC";
+    ctx.fillText(pronouns, CARD_SIZE / 2, 470);
+  }
 
   ctx.font = `700 26px ${FONT_STACK}`;
   ctx.fillStyle = "#E8734A";
-  ctx.fillText(hometown, CARD_SIZE / 2, 510);
+  ctx.fillText(hometown, CARD_SIZE / 2, pronouns ? 510 : 470);
 
   ctx.font = `400 24px ${FONT_STACK}`;
   ctx.fillStyle = "#FFFFFF";
@@ -248,7 +256,9 @@ export async function generateStoryCard(story) {
   ctx.textAlign = "left";
   ctx.font = `500 20px ${FONT_STACK}`;
   ctx.fillStyle = "#AABBCC";
-  ctx.fillText(graduationText, 72, 988);
+  if (graduationText) {
+    ctx.fillText(graduationText, 72, 988);
+  }
 
   const footerText = "oneblood.berea.edu";
   ctx.textAlign = "right";

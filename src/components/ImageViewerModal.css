@@ -1,0 +1,78 @@
+.image-modal-root {
+  position: absolute;
+  inset: 0;
+  min-height: 100vh;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.image-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 27, 45, 0.72);
+}
+
+.image-modal-panel {
+  position: relative;
+  width: min(820px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  border-radius: 14px;
+  border: 1px solid rgba(51, 78, 87, 0.24);
+  background: #f2f9f9;
+  box-shadow: 0 14px 36px rgba(15, 27, 45, 0.34);
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+  overflow: auto;
+}
+
+.image-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.image-modal-header h3 {
+  margin: 0;
+  font-size: 1.02rem;
+  color: #1b2b31;
+}
+
+.image-modal-close {
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.72rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #deeeef;
+  color: #2e434b;
+  cursor: pointer;
+}
+
+.image-modal-meta {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #375d67;
+}
+
+.image-modal-meta--muted {
+  color: rgba(46, 67, 75, 0.8);
+}
+
+.image-modal-frame {
+  border: 1px solid rgba(51, 78, 87, 0.2);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0.5rem;
+}
+
+.image-modal-frame img {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 700px);
+  object-fit: contain;
+  border-radius: 8px;
+}

@@ -5,6 +5,8 @@ import {
   GRAD_YEAR_MAX,
   GRAD_YEAR_MIN,
   HOMETOWN_MAX_LENGTH,
+  IMAGE_ACCEPT_ATTR,
+  IMAGE_HELPER_TEXT,
   MAJOR_MAX_LENGTH,
   NAME_MAX_LENGTH,
   OCCUPATION_MAX_LENGTH,
@@ -17,6 +19,7 @@ import {
   STORY_MAX_WORDS,
   getWordCount,
   getAudioValidationError,
+  getImageValidationError,
   normalizeSubmissionValues,
   validateStorySubmission,
 } from "./storyValidation";
@@ -84,6 +87,8 @@ function normalizeInitialValues(initialValues) {
       socialLinks: [],
       hasAudio: false,
       audioUrl: "",
+      hasImage: false,
+      imageUrl: "",
     };
   }
 
@@ -104,6 +109,9 @@ function normalizeInitialValues(initialValues) {
     hasAudio: Boolean(initialValues.hasAudio),
     audioUrl:
       typeof initialValues.audioUrl === "string" ? initialValues.audioUrl : "",
+    hasImage: Boolean(initialValues.hasImage),
+    imageUrl:
+      typeof initialValues.imageUrl === "string" ? initialValues.imageUrl : "",
   };
 }
 
@@ -142,8 +150,14 @@ export default function AddStoryModal({
   const [initialAudioUrl, setInitialAudioUrl] = useState("");
   const [hasSavedAudio, setHasSavedAudio] = useState(false);
   const [removeSavedAudio, setRemoveSavedAudio] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [initialHadImage, setInitialHadImage] = useState(false);
+  const [initialImageUrl, setInitialImageUrl] = useState("");
+  const [hasSavedImage, setHasSavedImage] = useState(false);
+  const [removeSavedImage, setRemoveSavedImage] = useState(false);
   const [error, setError] = useState("");
   const audioInputRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -176,6 +190,11 @@ export default function AddStoryModal({
     setInitialAudioUrl(normalizedInitialValues.audioUrl);
     setHasSavedAudio(normalizedInitialValues.hasAudio);
     setRemoveSavedAudio(false);
+    setImageFile(null);
+    setInitialHadImage(normalizedInitialValues.hasImage);
+    setInitialImageUrl(normalizedInitialValues.imageUrl);
+    setHasSavedImage(normalizedInitialValues.hasImage);
+    setRemoveSavedImage(false);
     setError("");
   }, [isOpen, initialValues]);
 
@@ -243,6 +262,8 @@ export default function AddStoryModal({
       socialLinks,
       audioFile,
       removeAudio: removeSavedAudio && !audioFile,
+      imageFile,
+      removeImage: removeSavedImage && !imageFile,
     });
     const validationError = validateStorySubmission(values);
 
@@ -325,6 +346,30 @@ export default function AddStoryModal({
     if (error) setError("");
   };
 
+  const handleImageChange = (event) => {
+    const selectedFile = event.target.files?.[0] || null;
+
+    if (!selectedFile) {
+      setImageFile(null);
+      setHasSavedImage(removeSavedImage ? false : initialHadImage);
+      if (error) setError("");
+      return;
+    }
+
+    const imageValidationError = getImageValidationError(selectedFile);
+    if (imageValidationError) {
+      setError(imageValidationError);
+      setImageFile(null);
+      event.target.value = "";
+      return;
+    }
+
+    setImageFile(selectedFile);
+    setHasSavedImage(false);
+    setRemoveSavedImage(false);
+    if (error) setError("");
+  };
+
   const handleProfileListAdd = (listType) => {
     if (listType === "majors") {
       setMajors((currentList) => [...currentList, ""]);
@@ -371,6 +416,27 @@ export default function AddStoryModal({
     setAudioFile(null);
     setHasSavedAudio(initialHadAudio);
     if (audioInputRef.current) audioInputRef.current.value = "";
+    if (error) setError("");
+  };
+
+  const handleRemoveSavedImage = () => {
+    setImageFile(null);
+    setHasSavedImage(false);
+    setRemoveSavedImage(true);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    if (error) setError("");
+  };
+
+  const handleRestoreSavedImage = () => {
+    setRemoveSavedImage(false);
+    setHasSavedImage(initialHadImage);
+    if (error) setError("");
+  };
+
+  const handleClearSelectedImage = () => {
+    setImageFile(null);
+    setHasSavedImage(initialHadImage);
+    if (imageInputRef.current) imageInputRef.current.value = "";
     if (error) setError("");
   };
 
@@ -813,6 +879,80 @@ export default function AddStoryModal({
             </>
           )}
 
+          <label htmlFor="image">Picture (optional)</label>
+          <input
+            id="image"
+            ref={imageInputRef}
+            type="file"
+            accept={IMAGE_ACCEPT_ATTR}
+            onChange={handleImageChange}
+            disabled={isSaving}
+          />
+          <p className="helper-text">Upload a picture for your pin popup.</p>
+          <p className="helper-text">{IMAGE_HELPER_TEXT}</p>
+          {hasSavedImage && !imageFile && (
+            <>
+              <p className="file-meta">
+                Current image is saved. Upload a new image to replace it, or
+                remove it.
+              </p>
+              {initialImageUrl && (
+                <img
+                  src={initialImageUrl}
+                  alt="Current uploaded"
+                  style={{
+                    width: "100%",
+                    maxHeight: "220px",
+                    objectFit: "contain",
+                    borderRadius: "10px",
+                    border: "1px solid rgba(51, 78, 87, 0.2)",
+                    background: "#ffffff",
+                    margin: "0.35rem 0 0.45rem",
+                  }}
+                />
+              )}
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRemoveSavedImage}
+                disabled={isSaving}
+                style={{ marginBottom: "0.45rem" }}
+              >
+                Remove current image
+              </button>
+            </>
+          )}
+          {removeSavedImage && !imageFile && (
+            <>
+              <p className="file-meta">
+                Current image will be removed when you save.
+              </p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRestoreSavedImage}
+                disabled={isSaving}
+                style={{ marginBottom: "0.45rem" }}
+              >
+                Keep current image
+              </button>
+            </>
+          )}
+          {imageFile && (
+            <>
+              <p className="file-meta">Selected: {imageFile.name}</p>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleClearSelectedImage}
+                disabled={isSaving}
+                style={{ marginBottom: "0.45rem" }}
+              >
+                Clear selected image
+              </button>
+            </>
+          )}
+
           {error && <p className="form-error">{error}</p>}
 
           <div className="modal-actions">
@@ -842,7 +982,7 @@ export default function AddStoryModal({
             </button>
             <button type="submit" className="btn-primary" disabled={isSaving}>
               {isSaving
-                ? audioFile
+                ? audioFile || imageFile
                   ? "Uploading..."
                   : "Saving..."
                 : hasExistingProfile

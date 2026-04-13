@@ -6,6 +6,7 @@ import AddStoryModal from "../AddStoryModal";
 import StoryCardModal from "../components/StoryCardModal";
 import AudioPlayerModal from "../components/AudioPlayerModal";
 import StoryReaderModal from "../components/StoryReaderModal";
+import ImageViewerModal from "../components/ImageViewerModal";
 import { geocodeHometown } from "../hometownSearch";
 import { useAuth } from "../auth/AuthContext";
 import { useRouter } from "../router";
@@ -23,20 +24,33 @@ import {
 } from "../storyValidation";
 import {
   AUDIO_BUCKET,
+  IMAGE_BUCKET,
   STORIES_FETCH_LIMIT,
   buildAudioFilePath,
+  buildImageFilePath,
   getGraduationYearOptions,
   getStoryType,
   sanitizeAudioUrl,
+  sanitizeImageUrl,
   sanitizeStoryRow,
   sanitizeStoryRows,
 } from "../storyUtils";
 
+const BEREA_COORDINATES = {
+  latitude: 37.5739,
+  longitude: -84.2963,
+};
+
 const STORY_SELECT_FIELDS_BASE =
   "id,name,pronouns,hometown,country_code,story,audio_url,story_type,graduation_year,social_links,latitude,longitude,created_at,user_id";
 
-function getStorySelectFields({ includeShareText, includeProfileDetails }) {
+function getStorySelectFields({
+  includeShareText,
+  includeProfileDetails,
+  includeImage,
+}) {
   const selectFields = [STORY_SELECT_FIELDS_BASE];
+  if (includeImage) selectFields.push("image_url");
   if (includeShareText) selectFields.push("share_text");
   if (includeProfileDetails) selectFields.push("majors", "occupations");
   return selectFields.join(",");
@@ -66,6 +80,13 @@ function getMissingOptionalColumns(error) {
     detailText.includes("occupations does not exist")
   ) {
     missingColumns.add("occupations");
+  }
+
+  if (
+    (detailText.includes("image_url") && detailText.includes("column")) ||
+    detailText.includes("image_url does not exist")
+  ) {
+    missingColumns.add("image_url");
   }
 
   return missingColumns;
@@ -111,6 +132,43 @@ function getPronounsInitialValues(pronounsValue) {
   return { pronounsSelection: "other", pronounsOther: trimmedPronouns };
 }
 
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function getDistanceKm(fromLatitude, fromLongitude, toLatitude, toLongitude) {
+  const earthRadiusKm = 6371;
+  const latitudeDelta = toRadians(toLatitude - fromLatitude);
+  const longitudeDelta = toRadians(toLongitude - fromLongitude);
+
+  const arcLength =
+    Math.sin(latitudeDelta / 2) * Math.sin(latitudeDelta / 2) +
+    Math.cos(toRadians(fromLatitude)) *
+      Math.cos(toRadians(toLatitude)) *
+      Math.sin(longitudeDelta / 2) *
+      Math.sin(longitudeDelta / 2);
+
+  const angle = 2 * Math.atan2(Math.sqrt(arcLength), Math.sqrt(1 - arcLength));
+  return earthRadiusKm * angle;
+}
+
+function normalizeDistancePin(story) {
+  if (!story) return null;
+  const latitude = Number(story.latitude);
+  const longitude = Number(story.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+  const rawId = story.id;
+  if (rawId === null || rawId === undefined) return null;
+
+  return {
+    id: rawId,
+    name: story.name || "Anonymous",
+    latitude,
+    longitude,
+  };
+}
+
 export default function MapPage() {
   const { user, isVerified, authLoading, authError, refreshUser, signOut } =
     useAuth();
@@ -127,8 +185,10 @@ export default function MapPage() {
   const [storyCardPreviewUrl, setStoryCardPreviewUrl] = useState("");
   const [storyReaderStory, setStoryReaderStory] = useState(null);
   const [audioPlayerStory, setAudioPlayerStory] = useState(null);
+  const [imageViewerStory, setImageViewerStory] = useState(null);
   const [supportsShareText, setSupportsShareText] = useState(true);
   const [supportsProfileDetails, setSupportsProfileDetails] = useState(true);
+  const [supportsImage, setSupportsImage] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedStoryId, setSelectedStoryId] = useState(null);
   const [mapFocusTarget, setMapFocusTarget] = useState(null);
@@ -137,9 +197,12 @@ export default function MapPage() {
   const [occupationFilter, setOccupationFilter] = useState("");
   const [graduationYearFilter, setGraduationYearFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
+  const [distanceModeEnabled, setDistanceModeEnabled] = useState(false);
+  const [distanceComparePins, setDistanceComparePins] = useState([]);
 
   const fetchRequestIdRef = useRef(0);
   const isSavingRef = useRef(false);
+  const lastDistancePinRef = useRef(null);
 
   useEffect(
     () => () => {
@@ -169,6 +232,7 @@ export default function MapPage() {
       try {
         let includeShareText = supportsShareText;
         let includeProfileDetails = supportsProfileDetails;
+        let includeImage = supportsImage;
         let data = null;
         let fetchError = null;
 
@@ -176,6 +240,7 @@ export default function MapPage() {
           const selectFields = getStorySelectFields({
             includeShareText,
             includeProfileDetails,
+            includeImage,
           });
           const fetchResult = await supabase
             .from("stories")
@@ -202,6 +267,11 @@ export default function MapPage() {
           ) {
             includeProfileDetails = false;
             setSupportsProfileDetails(false);
+            shouldRetry = true;
+          }
+          if (includeImage && missingColumns.has("image_url")) {
+            includeImage = false;
+            setSupportsImage(false);
             shouldRetry = true;
           }
 
@@ -245,7 +315,7 @@ export default function MapPage() {
         }
       }
     },
-    [supportsProfileDetails, supportsShareText],
+    [supportsImage, supportsProfileDetails, supportsShareText],
   );
 
   useEffect(() => {
@@ -356,6 +426,30 @@ export default function MapPage() {
     );
   }, [stories]);
 
+  const bereaDistanceHighlights = useMemo(() => {
+    let closest = null;
+    let farthest = null;
+
+    stories.forEach((story) => {
+      if (!Number.isFinite(story.latitude) || !Number.isFinite(story.longitude))
+        return;
+
+      const distanceKm = getDistanceKm(
+        BEREA_COORDINATES.latitude,
+        BEREA_COORDINATES.longitude,
+        story.latitude,
+        story.longitude,
+      );
+
+      const summaryItem = { story, distanceKm };
+      if (!closest || distanceKm < closest.distanceKm) closest = summaryItem;
+      if (!farthest || distanceKm > farthest.distanceKm) farthest = summaryItem;
+    });
+
+    if (!closest || !farthest) return null;
+    return { closest, farthest };
+  }, [stories]);
+
   const userProfileStory = useMemo(() => {
     if (!user?.id) return null;
     const ownStories = stories.filter((story) => story.user_id === user.id);
@@ -414,6 +508,8 @@ export default function MapPage() {
         : [],
       hasAudio: Boolean(userProfileStory.audio_url),
       audioUrl: userProfileStory.audio_url || "",
+      hasImage: Boolean(userProfileStory.image_url),
+      imageUrl: userProfileStory.image_url || "",
     };
   }, [userProfileStory]);
 
@@ -465,6 +561,50 @@ export default function MapPage() {
     setSelectedStoryId(null);
   }, []);
 
+  const handlePinDistanceSelect = useCallback(
+    (story) => {
+      const normalizedPin = normalizeDistancePin(story);
+      if (!normalizedPin) return;
+      lastDistancePinRef.current = normalizedPin;
+
+      if (!distanceModeEnabled) return;
+
+      setDistanceComparePins((currentPins) => {
+        if (currentPins.length === 0) return [normalizedPin];
+
+        if (currentPins.length === 1) {
+          if (String(currentPins[0].id) === String(normalizedPin.id)) {
+            return currentPins;
+          }
+          return [currentPins[0], normalizedPin];
+        }
+
+        // After a full pair is selected, any next click starts a new comparison.
+        return [normalizedPin];
+      });
+    },
+    [distanceModeEnabled],
+  );
+
+  const clearDistanceCompare = useCallback(() => {
+    setDistanceComparePins([]);
+  }, []);
+
+  const toggleDistanceMode = useCallback(() => {
+    setDistanceModeEnabled((isEnabled) => {
+      const nextValue = !isEnabled;
+      if (!nextValue) {
+        setDistanceComparePins([]);
+      } else {
+        const latestPin = lastDistancePinRef.current;
+        if (latestPin) {
+          setDistanceComparePins([latestPin]);
+        }
+      }
+      return nextValue;
+    });
+  }, []);
+
   const handleOpenStoryReader = useCallback(async (story) => {
     if (!story) return;
     setStoryReaderStory(story);
@@ -508,6 +648,15 @@ export default function MapPage() {
     setAudioPlayerStory(null);
   }, []);
 
+  const handleOpenImageViewer = useCallback((story) => {
+    if (!story) return;
+    setImageViewerStory(story);
+  }, []);
+
+  const handleCloseImageViewer = useCallback(() => {
+    setImageViewerStory(null);
+  }, []);
+
   const closeStoryCardModal = useCallback(() => {
     setIsStoryCardModalOpen(false);
     setStoryCardBlob(null);
@@ -516,6 +665,26 @@ export default function MapPage() {
       return "";
     });
   }, []);
+
+  const distanceCompareSummary = useMemo(() => {
+    if (distanceComparePins.length !== 2) return null;
+
+    const [pinA, pinB] = distanceComparePins;
+    const distanceKm = getDistanceKm(
+      pinA.latitude,
+      pinA.longitude,
+      pinB.latitude,
+      pinB.longitude,
+    );
+    const distanceMi = distanceKm * 0.621371;
+
+    return {
+      pinA,
+      pinB,
+      distanceKm,
+      distanceMi,
+    };
+  }, [distanceComparePins]);
 
   const handleStoryCardDownload = useCallback(() => {
     if (!storyCardBlob) return;
@@ -554,11 +723,21 @@ export default function MapPage() {
     }
   }, []);
 
-  const getAudioStoragePathFromUrl = useCallback((audioPublicUrl) => {
-    if (!audioPublicUrl) return "";
+  const cleanupUploadedImage = useCallback(async (filePath) => {
+    if (!filePath || !supabase) return;
+    const { error: cleanupError } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .remove([filePath]);
+    if (cleanupError) {
+      console.error("Uploaded image cleanup failed:", cleanupError);
+    }
+  }, []);
+
+  const getStoragePathFromUrl = useCallback((publicUrl, bucketName) => {
+    if (!publicUrl || !bucketName) return "";
     try {
-      const parsedUrl = new URL(audioPublicUrl);
-      const bucketSegment = `/${AUDIO_BUCKET}/`;
+      const parsedUrl = new URL(publicUrl);
+      const bucketSegment = `/${bucketName}/`;
       const segmentIndex = parsedUrl.pathname.indexOf(bucketSegment);
       if (segmentIndex === -1) return "";
       return decodeURIComponent(
@@ -571,11 +750,20 @@ export default function MapPage() {
 
   const cleanupStoredAudioByUrl = useCallback(
     async (audioPublicUrl) => {
-      const filePath = getAudioStoragePathFromUrl(audioPublicUrl);
+      const filePath = getStoragePathFromUrl(audioPublicUrl, AUDIO_BUCKET);
       if (!filePath) return;
       await cleanupUploadedAudio(filePath);
     },
-    [cleanupUploadedAudio, getAudioStoragePathFromUrl],
+    [cleanupUploadedAudio, getStoragePathFromUrl],
+  );
+
+  const cleanupStoredImageByUrl = useCallback(
+    async (imagePublicUrl) => {
+      const filePath = getStoragePathFromUrl(imagePublicUrl, IMAGE_BUCKET);
+      if (!filePath) return;
+      await cleanupUploadedImage(filePath);
+    },
+    [cleanupUploadedImage, getStoragePathFromUrl],
   );
 
   const handleSubmitStory = async (values) => {
@@ -616,10 +804,12 @@ export default function MapPage() {
       return { success: false, error: validationError };
     }
 
-    let uploadedFilePath = null;
+    let uploadedAudioFilePath = null;
+    let uploadedImageFilePath = null;
     let savedStory = null;
     let saveSucceeded = false;
     let audioUrl = null;
+    let imageUrl = null;
 
     isSavingRef.current = true;
     setIsSaving(true);
@@ -628,13 +818,16 @@ export default function MapPage() {
 
     try {
       const hasAudioStory = Boolean(normalizedValues.audioFile);
+      const hasImageStory = Boolean(normalizedValues.imageFile);
 
       if (hasAudioStory) {
-        uploadedFilePath = buildAudioFilePath(normalizedValues.audioFile.name);
+        uploadedAudioFilePath = buildAudioFilePath(
+          normalizedValues.audioFile.name,
+        );
 
         const { error: uploadError } = await supabase.storage
           .from(AUDIO_BUCKET)
-          .upload(uploadedFilePath, normalizedValues.audioFile, {
+          .upload(uploadedAudioFilePath, normalizedValues.audioFile, {
             upsert: false,
             contentType: normalizedValues.audioFile.type || undefined,
           });
@@ -652,14 +845,68 @@ export default function MapPage() {
 
         const { data: publicUrlData } = supabase.storage
           .from(AUDIO_BUCKET)
-          .getPublicUrl(uploadedFilePath);
+          .getPublicUrl(uploadedAudioFilePath);
         audioUrl = sanitizeAudioUrl(publicUrlData?.publicUrl);
 
         if (!audioUrl) {
-          await cleanupUploadedAudio(uploadedFilePath);
-          uploadedFilePath = null;
+          await cleanupUploadedAudio(uploadedAudioFilePath);
+          uploadedAudioFilePath = null;
           const message =
             "Audio uploaded but URL generation failed. Please try again.";
+          setSubmitError(message);
+          return { success: false, error: message };
+        }
+      }
+
+      if (hasImageStory) {
+        if (!supportsImage) {
+          return {
+            success: false,
+            error:
+              "Image upload needs an image_url column in your stories table.",
+          };
+        }
+
+        uploadedImageFilePath = buildImageFilePath(
+          normalizedValues.imageFile.name,
+        );
+
+        const { error: uploadError } = await supabase.storage
+          .from(IMAGE_BUCKET)
+          .upload(uploadedImageFilePath, normalizedValues.imageFile, {
+            upsert: false,
+            contentType: normalizedValues.imageFile.type || undefined,
+          });
+
+        if (uploadError) {
+          console.error("Error uploading image:", uploadError);
+          if (uploadedAudioFilePath) {
+            await cleanupUploadedAudio(uploadedAudioFilePath);
+            uploadedAudioFilePath = null;
+          }
+          const message =
+            "Could not upload image. Check storage bucket/policies and try again.";
+          setSubmitError(message);
+          return {
+            success: false,
+            error: `${message} (${uploadError.message || "Upload failed"})`,
+          };
+        }
+
+        const { data: publicUrlData } = supabase.storage
+          .from(IMAGE_BUCKET)
+          .getPublicUrl(uploadedImageFilePath);
+        imageUrl = sanitizeImageUrl(publicUrlData?.publicUrl);
+
+        if (!imageUrl) {
+          await cleanupUploadedImage(uploadedImageFilePath);
+          uploadedImageFilePath = null;
+          if (uploadedAudioFilePath) {
+            await cleanupUploadedAudio(uploadedAudioFilePath);
+            uploadedAudioFilePath = null;
+          }
+          const message =
+            "Image uploaded but URL generation failed. Please try again.";
           setSubmitError(message);
           return { success: false, error: message };
         }
@@ -669,6 +916,7 @@ export default function MapPage() {
       if (!existingProfile) {
         let includeShareText = supportsShareText;
         let includeProfileDetails = supportsProfileDetails;
+        let includeImage = supportsImage;
         let existingRows = null;
         let existingLookupError = null;
 
@@ -676,6 +924,7 @@ export default function MapPage() {
           const lookupFields = getStorySelectFields({
             includeShareText,
             includeProfileDetails,
+            includeImage,
           });
           const lookupResult = await supabase
             .from("stories")
@@ -702,6 +951,11 @@ export default function MapPage() {
           ) {
             includeProfileDetails = false;
             setSupportsProfileDetails(false);
+            shouldRetry = true;
+          }
+          if (includeImage && missingColumns.has("image_url")) {
+            includeImage = false;
+            setSupportsImage(false);
             shouldRetry = true;
           }
 
@@ -735,7 +989,13 @@ export default function MapPage() {
         (normalizedValues.removeAudio
           ? null
           : sanitizeAudioUrl(existingProfile?.audio_url));
+      const resolvedImageUrl =
+        imageUrl ||
+        (normalizedValues.removeImage
+          ? null
+          : sanitizeImageUrl(existingProfile?.image_url));
       const previousAudioUrl = sanitizeAudioUrl(existingProfile?.audio_url);
+      const previousImageUrl = sanitizeImageUrl(existingProfile?.image_url);
       const hasText = Boolean(normalizedValues.story);
       const hasAudio = Boolean(resolvedAudioUrl);
 
@@ -751,6 +1011,7 @@ export default function MapPage() {
         occupations: normalizedValues.occupations,
         social_links: normalizeSocialLinks(normalizedValues.socialLinks),
         audio_url: resolvedAudioUrl,
+        image_url: resolvedImageUrl,
         story_type: getStoryType(hasText, hasAudio),
         latitude: hometownLocation.latitude,
         longitude: hometownLocation.longitude,
@@ -762,6 +1023,9 @@ export default function MapPage() {
         delete payload.majors;
         delete payload.occupations;
       }
+      if (!supportsImage) {
+        delete payload.image_url;
+      }
 
       let savedData = null;
       let saveError = null;
@@ -769,6 +1033,7 @@ export default function MapPage() {
       const persistProfile = async ({
         includeShareText,
         includeProfileDetails,
+        includeImage,
       }) => {
         const excludedKeys = new Set();
         if (!includeShareText) excludedKeys.add("share_text");
@@ -776,6 +1041,7 @@ export default function MapPage() {
           excludedKeys.add("majors");
           excludedKeys.add("occupations");
         }
+        if (!includeImage) excludedKeys.add("image_url");
 
         const persistedPayload = Object.fromEntries(
           Object.entries(payload).filter(([key]) => !excludedKeys.has(key)),
@@ -783,6 +1049,7 @@ export default function MapPage() {
         const selectFields = getStorySelectFields({
           includeShareText,
           includeProfileDetails,
+          includeImage,
         });
 
         if (existingProfile?.id) {
@@ -808,6 +1075,7 @@ export default function MapPage() {
       ({ data: savedData, error: saveError } = await persistProfile({
         includeShareText: supportsShareText,
         includeProfileDetails: supportsProfileDetails,
+        includeImage: supportsImage,
       }));
 
       const missingSaveColumns = getMissingOptionalColumns(saveError);
@@ -818,10 +1086,34 @@ export default function MapPage() {
         supportsProfileDetails &&
         (missingSaveColumns.has("majors") ||
           missingSaveColumns.has("occupations"));
+      const shouldRetryWithoutImage =
+        saveError && supportsImage && missingSaveColumns.has("image_url");
+      const imageMutationRequested = Boolean(
+        normalizedValues.imageFile ||
+        normalizedValues.removeImage ||
+        sanitizeImageUrl(existingProfile?.image_url),
+      );
 
-      if (shouldRetryWithoutShareText || shouldRetryWithoutProfileDetails) {
+      if (shouldRetryWithoutImage && imageMutationRequested) {
+        if (uploadedAudioFilePath)
+          await cleanupUploadedAudio(uploadedAudioFilePath);
+        if (uploadedImageFilePath)
+          await cleanupUploadedImage(uploadedImageFilePath);
+        setSupportsImage(false);
+        const message =
+          "Image saving is not available yet. Add image_url column to the stories table.";
+        setSubmitError(message);
+        return { success: false, error: message };
+      }
+
+      if (
+        shouldRetryWithoutShareText ||
+        shouldRetryWithoutProfileDetails ||
+        shouldRetryWithoutImage
+      ) {
         if (shouldRetryWithoutShareText) setSupportsShareText(false);
         if (shouldRetryWithoutProfileDetails) setSupportsProfileDetails(false);
+        if (shouldRetryWithoutImage) setSupportsImage(false);
 
         ({ data: savedData, error: saveError } = await persistProfile({
           includeShareText: shouldRetryWithoutShareText
@@ -830,12 +1122,16 @@ export default function MapPage() {
           includeProfileDetails: shouldRetryWithoutProfileDetails
             ? false
             : supportsProfileDetails,
+          includeImage: shouldRetryWithoutImage ? false : supportsImage,
         }));
       }
 
       if (saveError) {
         console.error("Error saving profile:", saveError);
-        if (uploadedFilePath) await cleanupUploadedAudio(uploadedFilePath);
+        if (uploadedAudioFilePath)
+          await cleanupUploadedAudio(uploadedAudioFilePath);
+        if (uploadedImageFilePath)
+          await cleanupUploadedImage(uploadedImageFilePath);
         const insertMessage = saveError.message || "Save failed";
         const contentConstraintHit = insertMessage.includes(
           "stories_content_check",
@@ -885,13 +1181,18 @@ export default function MapPage() {
       if (previousAudioUrl && previousAudioUrl !== resolvedAudioUrl) {
         await cleanupStoredAudioByUrl(previousAudioUrl);
       }
+      if (previousImageUrl && previousImageUrl !== resolvedImageUrl) {
+        await cleanupStoredImageByUrl(previousImageUrl);
+      }
 
       closeModal();
       return { success: true };
     } catch (unexpectedError) {
       console.error("Unexpected error while saving profile:", unexpectedError);
-      if (uploadedFilePath && !saveSucceeded)
-        await cleanupUploadedAudio(uploadedFilePath);
+      if (uploadedAudioFilePath && !saveSucceeded)
+        await cleanupUploadedAudio(uploadedAudioFilePath);
+      if (uploadedImageFilePath && !saveSucceeded)
+        await cleanupUploadedImage(uploadedImageFilePath);
       const message =
         "Unexpected error while saving your profile. Please try again.";
       setSubmitError(message);
@@ -954,6 +1255,7 @@ export default function MapPage() {
         <StorySidebar
           stories={filteredStories}
           totalStoriesCount={stories.length}
+          distanceHighlights={bereaDistanceHighlights}
           selectedStoryId={selectedStoryId}
           searchQuery={searchQuery}
           majorFilter={majorFilter}
@@ -979,10 +1281,42 @@ export default function MapPage() {
             onMarkerSelect={handleMarkerSelect}
             onReadStory={handleOpenStoryReader}
             onListenAudio={handleOpenAudioPlayer}
+            onViewImage={handleOpenImageViewer}
             onShareStory={handleShareStory}
+            onPinDistanceSelect={handlePinDistanceSelect}
             focusTarget={mapFocusTarget}
             onMapBackgroundClick={handleMapBackgroundClick}
           />
+
+          <button
+            type="button"
+            className={`distance-mode-toggle ${distanceModeEnabled ? "distance-mode-toggle--active" : ""}`}
+            onClick={toggleDistanceMode}
+          >
+            Distance Mode: {distanceModeEnabled ? "On" : "Off"}
+          </button>
+
+          {distanceModeEnabled && distanceComparePins.length > 0 && (
+            <div className="distance-compare-banner">
+              {distanceCompareSummary ? (
+                <p>
+                  {distanceCompareSummary.pinA.name} to{" "}
+                  {distanceCompareSummary.pinB.name}:{" "}
+                  {distanceCompareSummary.distanceKm.toFixed(0)} km (
+                  {distanceCompareSummary.distanceMi.toFixed(0)} mi)
+                </p>
+              ) : (
+                <p>
+                  First pin selected:{" "}
+                  <strong>{distanceComparePins[0]?.name || "Unknown"}</strong>.
+                  Click another pin to compare distance.
+                </p>
+              )}
+              <button type="button" onClick={clearDistanceCompare}>
+                Clear
+              </button>
+            </div>
+          )}
 
           {user && !isVerified && (
             <div className="auth-restriction-banner">
@@ -1060,6 +1394,12 @@ export default function MapPage() {
         isOpen={Boolean(audioPlayerStory)}
         story={audioPlayerStory}
         onClose={handleCloseAudioPlayer}
+      />
+
+      <ImageViewerModal
+        isOpen={Boolean(imageViewerStory)}
+        story={imageViewerStory}
+        onClose={handleCloseImageViewer}
       />
     </div>
   );

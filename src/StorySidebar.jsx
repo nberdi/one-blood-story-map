@@ -4,6 +4,7 @@ import { getGraduationYearLabel, getHometownWithFlag } from "./storyUtils";
 export default function StorySidebar({
   stories,
   totalStoriesCount,
+  distanceHighlights,
   selectedStoryId,
   searchQuery,
   majorFilter,
@@ -38,6 +39,29 @@ export default function StorySidebar({
     if (hasNoMatches) return "No stories match your filters.";
     return `${stories.length} stories shown`;
   }, [loading, noStoriesYet, hasNoMatches, stories.length]);
+
+  const distanceSummary = useMemo(() => {
+    if (!distanceHighlights?.closest || !distanceHighlights?.farthest) {
+      return null;
+    }
+
+    const formatDistance = (distanceKm) => {
+      const km = Number(distanceKm) || 0;
+      const miles = km * 0.621371;
+      return `${km.toFixed(0)} km (${miles.toFixed(0)} mi)`;
+    };
+
+    return {
+      closest: {
+        name: distanceHighlights.closest.story?.name || "Anonymous",
+        distance: formatDistance(distanceHighlights.closest.distanceKm),
+      },
+      farthest: {
+        name: distanceHighlights.farthest.story?.name || "Anonymous",
+        distance: formatDistance(distanceHighlights.farthest.distanceKm),
+      },
+    };
+  }, [distanceHighlights]);
 
   return (
     <aside className="story-sidebar">
@@ -122,6 +146,19 @@ export default function StorySidebar({
       </div>
 
       <p className="story-sidebar__meta">{sidebarMetaText}</p>
+      {distanceSummary && (
+        <div className="story-sidebar__distance">
+          <p className="story-sidebar__distance-title">From Berea, KY</p>
+          <p className="story-sidebar__distance-item">
+            Closest: <strong>{distanceSummary.closest.name}</strong>{" "}
+            <span>{distanceSummary.closest.distance}</span>
+          </p>
+          <p className="story-sidebar__distance-item">
+            Farthest: <strong>{distanceSummary.farthest.name}</strong>{" "}
+            <span>{distanceSummary.farthest.distance}</span>
+          </p>
+        </div>
+      )}
 
       <div className="story-list" role="list">
         {noStoriesYet && !loading && (

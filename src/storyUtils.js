@@ -15,6 +15,7 @@ import {
 } from "./storyValidation";
 
 export const AUDIO_BUCKET = "story-audio";
+export const IMAGE_BUCKET = "story-images";
 export const STORIES_FETCH_LIMIT = 500;
 
 function sanitizeCountryCode(value) {
@@ -63,7 +64,16 @@ export function buildAudioFilePath(fileName) {
   return `stories/${Date.now()}-${randomSuffix}.${safeExtension || "webm"}`;
 }
 
-export function sanitizeAudioUrl(value) {
+export function buildImageFilePath(fileName) {
+  const randomSuffix = Math.random().toString(36).slice(2, 10);
+  const extension = fileName.includes(".") ? fileName.split(".").pop() : "jpg";
+  const safeExtension = (extension || "jpg")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  return `stories/${Date.now()}-${randomSuffix}.${safeExtension || "jpg"}`;
+}
+
+function sanitizePublicHttpUrl(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -76,6 +86,19 @@ export function sanitizeAudioUrl(value) {
   } catch {
     return null;
   }
+}
+
+export function sanitizeAudioUrl(value) {
+  return sanitizePublicHttpUrl(value);
+}
+
+export function sanitizeImageUrl(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("/")) return trimmed;
+  return sanitizePublicHttpUrl(trimmed);
 }
 
 export function sanitizeStoryRow(row) {
@@ -91,6 +114,7 @@ export function sanitizeStoryRow(row) {
   const story = sanitizeStoryText(row.story);
   const shareText = sanitizeStoryText(row.share_text);
   const audioUrl = sanitizeAudioUrl(row.audio_url);
+  const imageUrl = sanitizeImageUrl(row.image_url);
   const parsedGradYear = sanitizeGraduationYear(row.graduation_year);
   const graduationYear = isValidGraduationYear(parsedGradYear)
     ? parsedGradYear
@@ -117,6 +141,7 @@ export function sanitizeStoryRow(row) {
     story,
     share_text: shareText,
     audio_url: audioUrl,
+    image_url: imageUrl,
     story_type:
       row.story_type || getStoryType(Boolean(story), Boolean(audioUrl)),
     graduation_year: graduationYear,
