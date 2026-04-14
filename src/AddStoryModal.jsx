@@ -647,8 +647,8 @@ export default function AddStoryModal({
             {shareTextWordCount}/{SHARE_TEXT_MAX_WORDS} words
           </p>
           <p className="helper-text">
-            This text is used on your Share card. If empty, your Text Story is
-            used.
+            This text is used on your Share card. Leave it blank to show no
+            story text on the card.
           </p>
 
           <label htmlFor="graduationYear">

@@ -25,7 +25,8 @@ import {
 import {
   AUDIO_BUCKET,
   IMAGE_BUCKET,
-  STORIES_FETCH_LIMIT,
+  STORIES_FETCH_MAX,
+  STORIES_FETCH_PAGE_SIZE,
   buildAudioFilePath,
   buildImageFilePath,
   getGraduationYearOptions,
@@ -233,23 +234,24 @@ export default function MapPage() {
         let includeShareText = supportsShareText;
         let includeProfileDetails = supportsProfileDetails;
         let includeImage = supportsImage;
-        let data = null;
+        let selectFields = "";
+        let firstPageData = null;
         let fetchError = null;
 
         for (let attempt = 0; attempt < 3; attempt += 1) {
-          const selectFields = getStorySelectFields({
+          selectFields = getStorySelectFields({
             includeShareText,
             includeProfileDetails,
             includeImage,
           });
-          const fetchResult = await supabase
+          const firstPageResult = await supabase
             .from("stories")
             .select(selectFields)
             .order("created_at", { ascending: false })
-            .limit(STORIES_FETCH_LIMIT);
+            .range(0, STORIES_FETCH_PAGE_SIZE - 1);
 
-          data = fetchResult.data;
-          fetchError = fetchResult.error;
+          firstPageData = firstPageResult.data;
+          fetchError = firstPageResult.error;
 
           if (!fetchError) break;
 
@@ -291,7 +293,53 @@ export default function MapPage() {
           };
         }
 
-        const sanitizedStories = sanitizeStoryRows(data || []);
+        let allRows = Array.isArray(firstPageData) ? [...firstPageData] : [];
+        let fetchOffset = allRows.length;
+
+        while (
+          fetchOffset > 0 &&
+          fetchOffset % STORIES_FETCH_PAGE_SIZE === 0 &&
+          fetchOffset < STORIES_FETCH_MAX
+        ) {
+          if (requestId !== fetchRequestIdRef.current) {
+            return { success: false, stale: true };
+          }
+
+          const rangeEnd = Math.min(
+            fetchOffset + STORIES_FETCH_PAGE_SIZE - 1,
+            STORIES_FETCH_MAX - 1,
+          );
+          const { data: nextPageData, error: nextPageError } = await supabase
+            .from("stories")
+            .select(selectFields)
+            .order("created_at", { ascending: false })
+            .range(fetchOffset, rangeEnd);
+
+          if (nextPageError) {
+            console.error(
+              "Error loading additional story pages:",
+              nextPageError,
+            );
+            setLoadError("Could not load all stories right now.");
+            break;
+          }
+
+          const normalizedRows = Array.isArray(nextPageData)
+            ? nextPageData
+            : [];
+          if (!normalizedRows.length) break;
+
+          allRows = allRows.concat(normalizedRows);
+          fetchOffset += normalizedRows.length;
+
+          if (normalizedRows.length < STORIES_FETCH_PAGE_SIZE) break;
+        }
+
+        if (requestId !== fetchRequestIdRef.current) {
+          return { success: false, stale: true };
+        }
+
+        const sanitizedStories = sanitizeStoryRows(allRows);
         setStories(sanitizedStories);
         setSelectedStoryId((currentId) =>
           sanitizedStories.some((story) => story.id === currentId)
@@ -605,34 +653,9 @@ export default function MapPage() {
     });
   }, []);
 
-  const handleOpenStoryReader = useCallback(async (story) => {
+  const handleOpenStoryReader = useCallback((story) => {
     if (!story) return;
     setStoryReaderStory(story);
-
-    if (!supabase || !story.id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("stories")
-        .select("id,story")
-        .eq("id", story.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Could not load full story text:", error);
-        return;
-      }
-
-      if (data?.id === story.id && typeof data.story === "string") {
-        setStoryReaderStory((currentStory) => {
-          if (!currentStory || currentStory.id !== story.id)
-            return currentStory;
-          return { ...currentStory, story: data.story };
-        });
-      }
-    } catch (fetchError) {
-      console.error("Unexpected full story fetch error:", fetchError);
-    }
   }, []);
 
   const handleCloseStoryReader = useCallback(() => {
@@ -823,6 +846,7 @@ export default function MapPage() {
       if (hasAudioStory) {
         uploadedAudioFilePath = buildAudioFilePath(
           normalizedValues.audioFile.name,
+          user.id,
         );
 
         const { error: uploadError } = await supabase.storage
@@ -869,6 +893,7 @@ export default function MapPage() {
 
         uploadedImageFilePath = buildImageFilePath(
           normalizedValues.imageFile.name,
+          user.id,
         );
 
         const { error: uploadError } = await supabase.storage
@@ -1217,7 +1242,7 @@ export default function MapPage() {
       return;
     }
 
-    if (result.user?.email_confirmed_at) {
+    if (result.user?.email_confirmed_at || result.user?.confirmed_at) {
       setSubmitSuccess(
         "Email verified. You can now add your hometown profile.",
       );

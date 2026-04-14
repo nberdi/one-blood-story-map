@@ -1,13 +1,15 @@
+import { Suspense, lazy } from "react";
 import { AuthProvider } from "./auth/AuthContext";
 import { RouterProvider, useRouter } from "./router";
-import FoundersPage from "./pages/FoundersPage";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage";
-import LandingPage from "./pages/LandingPage";
-import LoginPage from "./pages/LoginPage";
-import MapPage from "./pages/MapPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage";
-import SignupPage from "./pages/SignupPage";
-import VerifyEmailPage from "./pages/VerifyEmailPage";
+
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const FoundersPage = lazy(() => import("./pages/FoundersPage"));
+const MapPage = lazy(() => import("./pages/MapPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const SignupPage = lazy(() => import("./pages/SignupPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage"));
+const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage"));
 
 function normalizePath(pathname) {
   if (!pathname || pathname === "/") return "/";
@@ -47,7 +49,15 @@ export default function App() {
   return (
     <RouterProvider>
       <AuthProvider>
-        <RouterView />
+        <Suspense
+          fallback={
+            <main className="not-found-shell">
+              <p>Loading...</p>
+            </main>
+          }
+        >
+          <RouterView />
+        </Suspense>
       </AuthProvider>
     </RouterProvider>
   );

@@ -106,116 +106,64 @@ create unique index if not exists stories_user_id_unique
 on public.stories (user_id)
 where user_id is not null;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_story_type_check'
-  ) then
-    alter table public.stories
-      add constraint stories_story_type_check
-      check (story_type in ('text', 'audio', 'both', 'profile'));
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_story_length_check'
-  ) then
-    alter table public.stories
-      add constraint stories_story_length_check
-      check (
-        story is null
-        or array_length(regexp_split_to_array(trim(story), E'\\s+'), 1) <= 600
-      ) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_share_text_length_check'
-  ) then
-    alter table public.stories
-      add constraint stories_share_text_length_check
-      check (
-        share_text is null
-        or array_length(regexp_split_to_array(trim(share_text), E'\\s+'), 1) <= 100
-      ) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_name_length_check'
-  ) then
-    alter table public.stories
-      add constraint stories_name_length_check
-      check (name is null or char_length(name) <= 80) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_hometown_length_check'
-  ) then
-    alter table public.stories
-      add constraint stories_hometown_length_check
-      check (char_length(hometown) <= 120) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_hometown_not_blank_check'
-  ) then
-    alter table public.stories
-      add constraint stories_hometown_not_blank_check
-      check (char_length(trim(hometown)) > 0) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_latitude_range_check'
-  ) then
-    alter table public.stories
-      add constraint stories_latitude_range_check
-      check (latitude between -90 and 90) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_longitude_range_check'
-  ) then
-    alter table public.stories
-      add constraint stories_longitude_range_check
-      check (longitude between -180 and 180) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_country_code_check'
-  ) then
-    alter table public.stories
-      add constraint stories_country_code_check
-      check (country_code is null or country_code ~ '^[A-Z]{2}$') not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_graduation_year_range_check'
-  ) then
-    alter table public.stories
-      add constraint stories_graduation_year_range_check
-      check (
-        graduation_year is null
-        or graduation_year between 1900 and (extract(year from now())::int + 10)
-      ) not valid;
-  end if;
-
-  if not exists (
-    select 1 from pg_constraint where conname = 'stories_social_links_array_check'
-  ) then
-    alter table public.stories
-      add constraint stories_social_links_array_check
-      check (jsonb_typeof(social_links) = 'array') not valid;
-  end if;
-end $$;
-```
-
-If you want to require at least one of text or audio, add this optional constraint:
-
-```sql
 alter table public.stories
-  add constraint stories_content_check
-  check (
-    char_length(trim(coalesce(story, ''))) > 0
-    or char_length(trim(coalesce(audio_url, ''))) > 0
-  ) not valid;
+  drop constraint if exists stories_content_check,
+  drop constraint if exists stories_story_type_check,
+  drop constraint if exists stories_story_length_check,
+  drop constraint if exists stories_share_text_length_check,
+  drop constraint if exists stories_name_length_check,
+  drop constraint if exists stories_hometown_length_check,
+  drop constraint if exists stories_hometown_not_blank_check,
+  drop constraint if exists stories_latitude_range_check,
+  drop constraint if exists stories_longitude_range_check,
+  drop constraint if exists stories_country_code_check,
+  drop constraint if exists stories_graduation_year_range_check,
+  drop constraint if exists stories_social_links_array_check;
+
+alter table public.stories
+  add constraint stories_story_type_check
+    check (story_type in ('text', 'audio', 'both', 'profile')) not valid,
+  add constraint stories_story_length_check
+    check (
+      story is null
+      or array_length(regexp_split_to_array(trim(story), E'\\s+'), 1) <= 600
+    ) not valid,
+  add constraint stories_share_text_length_check
+    check (
+      share_text is null
+      or array_length(regexp_split_to_array(trim(share_text), E'\\s+'), 1) <= 100
+    ) not valid,
+  add constraint stories_name_length_check
+    check (name is null or char_length(name) <= 80) not valid,
+  add constraint stories_hometown_length_check
+    check (char_length(hometown) <= 120) not valid,
+  add constraint stories_hometown_not_blank_check
+    check (char_length(trim(hometown)) > 0) not valid,
+  add constraint stories_latitude_range_check
+    check (latitude between -90 and 90) not valid,
+  add constraint stories_longitude_range_check
+    check (longitude between -180 and 180) not valid,
+  add constraint stories_country_code_check
+    check (country_code is null or country_code ~ '^[A-Z]{2}$') not valid,
+  add constraint stories_graduation_year_range_check
+    check (
+      graduation_year is null
+      or graduation_year between 1900 and (extract(year from now())::int + 10)
+    ) not valid,
+  add constraint stories_social_links_array_check
+    check (jsonb_typeof(social_links) = 'array') not valid;
+
+alter table public.stories validate constraint stories_story_type_check;
+alter table public.stories validate constraint stories_story_length_check;
+alter table public.stories validate constraint stories_share_text_length_check;
+alter table public.stories validate constraint stories_name_length_check;
+alter table public.stories validate constraint stories_hometown_length_check;
+alter table public.stories validate constraint stories_hometown_not_blank_check;
+alter table public.stories validate constraint stories_latitude_range_check;
+alter table public.stories validate constraint stories_longitude_range_check;
+alter table public.stories validate constraint stories_country_code_check;
+alter table public.stories validate constraint stories_graduation_year_range_check;
+alter table public.stories validate constraint stories_social_links_array_check;
 ```
 
 ## Auth + access control setup
@@ -250,7 +198,8 @@ for insert
 to authenticated
 with check (
   auth.uid() = user_id
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and split_part(lower(coalesce(auth.jwt() ->> 'email', '')), '@', 2) = 'berea.edu'
+  and coalesce(auth.jwt() ->> 'email_confirmed_at', '') <> ''
 );
 
 create policy "Verified Berea users can update own story profile"
@@ -259,11 +208,13 @@ for update
 to authenticated
 using (
   auth.uid() = user_id
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and split_part(lower(coalesce(auth.jwt() ->> 'email', '')), '@', 2) = 'berea.edu'
+  and coalesce(auth.jwt() ->> 'email_confirmed_at', '') <> ''
 )
 with check (
   auth.uid() = user_id
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and split_part(lower(coalesce(auth.jwt() ->> 'email', '')), '@', 2) = 'berea.edu'
+  and coalesce(auth.jwt() ->> 'email_confirmed_at', '') <> ''
 );
 ```
 
@@ -277,7 +228,10 @@ Notes:
 1. In Supabase dashboard, create two public buckets:
    - `story-audio`
    - `story-images`
-2. If you use RLS for storage, allow read + insert + delete for both buckets.
+2. If you use RLS for storage, allow read + insert + delete for both buckets, but scope writes/deletes to each owner's folder prefix.
+
+   The app writes to object paths like:
+   - `"<auth.uid()>/stories/<timestamp>-<random>.ext"`
 
 ```sql
 insert into storage.buckets (id, name, public)
@@ -296,7 +250,7 @@ for insert
 to authenticated
 with check (
   bucket_id = 'story-audio'
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and split_part(name, '/', 1) = auth.uid()::text
 );
 
 create policy "Authenticated can delete story audio"
@@ -305,7 +259,8 @@ for delete
 to authenticated
 using (
   bucket_id = 'story-audio'
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and owner = auth.uid()
+  and split_part(name, '/', 1) = auth.uid()::text
 );
 
 insert into storage.buckets (id, name, public)
@@ -324,7 +279,7 @@ for insert
 to authenticated
 with check (
   bucket_id = 'story-images'
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and split_part(name, '/', 1) = auth.uid()::text
 );
 
 create policy "Authenticated can delete story images"
@@ -333,6 +288,38 @@ for delete
 to authenticated
 using (
   bucket_id = 'story-images'
-  and auth.jwt() ->> 'email' ilike '%@berea.edu'
+  and owner = auth.uid()
+  and split_part(name, '/', 1) = auth.uid()::text
 );
+```
+
+## Production verification queries
+
+Before shipping, run these checks in the target Supabase project:
+
+```sql
+-- stories RLS enabled
+select relname, relrowsecurity
+from pg_class
+where relname = 'stories';
+
+-- stories policies
+select policyname, cmd, roles, permissive, qual, with_check
+from pg_policies
+where schemaname = 'public' and tablename = 'stories'
+order by policyname;
+
+-- stories constraints
+select conname, pg_get_constraintdef(c.oid) as definition
+from pg_constraint c
+join pg_class t on t.oid = c.conrelid
+join pg_namespace n on n.oid = t.relnamespace
+where n.nspname = 'public' and t.relname = 'stories'
+order by conname;
+
+-- storage policies
+select policyname, cmd, roles, permissive, qual, with_check
+from pg_policies
+where schemaname = 'storage' and tablename = 'objects'
+order by policyname;
 ```

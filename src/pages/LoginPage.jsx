@@ -4,6 +4,14 @@ import { useAuth } from "../auth/AuthContext";
 import { supabase, supabaseConfigError } from "../supabaseClient";
 import { useRouter } from "../router";
 
+function getSafeRedirectTarget(rawTarget) {
+  if (typeof rawTarget !== "string") return "/map";
+  const trimmed = rawTarget.trim();
+  if (!trimmed.startsWith("/")) return "/map";
+  if (trimmed.startsWith("//")) return "/map";
+  return trimmed;
+}
+
 export default function LoginPage() {
   const { user, signOut } = useAuth();
   const { location, navigate } = useRouter();
@@ -15,7 +23,7 @@ export default function LoginPage() {
 
   const redirectTarget = useMemo(() => {
     const params = new URLSearchParams(location.search || "");
-    return params.get("next") || "/map";
+    return getSafeRedirectTarget(params.get("next") || "/map");
   }, [location.search]);
   const resetSuccess = useMemo(() => {
     const params = new URLSearchParams(location.search || "");

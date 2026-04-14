@@ -16,7 +16,8 @@ import {
 
 export const AUDIO_BUCKET = "story-audio";
 export const IMAGE_BUCKET = "story-images";
-export const STORIES_FETCH_LIMIT = 500;
+export const STORIES_FETCH_PAGE_SIZE = 500;
+export const STORIES_FETCH_MAX = 5000;
 
 function sanitizeCountryCode(value) {
   if (typeof value !== "string") return null;
@@ -55,22 +56,30 @@ export function getStoryType(hasTextStory, hasAudioStory) {
   return "profile";
 }
 
-export function buildAudioFilePath(fileName) {
+function sanitizeStoragePathSegment(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const cleaned = value.trim().replace(/[^a-zA-Z0-9_-]/g, "");
+  return cleaned || fallback;
+}
+
+export function buildAudioFilePath(fileName, userId) {
   const randomSuffix = Math.random().toString(36).slice(2, 10);
   const extension = fileName.includes(".") ? fileName.split(".").pop() : "webm";
   const safeExtension = (extension || "webm")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
-  return `stories/${Date.now()}-${randomSuffix}.${safeExtension || "webm"}`;
+  const ownerPrefix = sanitizeStoragePathSegment(userId, "anonymous");
+  return `${ownerPrefix}/stories/${Date.now()}-${randomSuffix}.${safeExtension || "webm"}`;
 }
 
-export function buildImageFilePath(fileName) {
+export function buildImageFilePath(fileName, userId) {
   const randomSuffix = Math.random().toString(36).slice(2, 10);
   const extension = fileName.includes(".") ? fileName.split(".").pop() : "jpg";
   const safeExtension = (extension || "jpg")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
-  return `stories/${Date.now()}-${randomSuffix}.${safeExtension || "jpg"}`;
+  const ownerPrefix = sanitizeStoragePathSegment(userId, "anonymous");
+  return `${ownerPrefix}/stories/${Date.now()}-${randomSuffix}.${safeExtension || "jpg"}`;
 }
 
 function sanitizePublicHttpUrl(value) {
@@ -160,27 +169,6 @@ export function sanitizeStoryRows(rows) {
   return rows.map(sanitizeStoryRow).filter(Boolean);
 }
 
-export function getStoryTypeFromRecord(story) {
-  const rawType =
-    typeof story?.story_type === "string" ? story.story_type.toLowerCase() : "";
-  if (
-    rawType === "text" ||
-    rawType === "audio" ||
-    rawType === "both" ||
-    rawType === "profile"
-  ) {
-    return rawType;
-  }
-  return getStoryType(Boolean(story?.story), Boolean(story?.audio_url));
-}
-
-export function getStoryTypeLabel(storyType) {
-  if (storyType === "audio") return "Audio";
-  if (storyType === "both") return "Text + Audio";
-  if (storyType === "profile") return "Profile";
-  return "Text";
-}
-
 export function getSocialPlatformLabel(platform) {
   const match = SOCIAL_PLATFORM_OPTIONS.find((item) => item.value === platform);
   return match?.label || "Profile";
@@ -201,34 +189,6 @@ export function getGraduationYearOptions(stories) {
   });
 
   return [...years].sort((a, b) => b - a);
-}
-
-export function getGraduationYearBoundsText() {
-  return `${GRAD_YEAR_MIN}-${GRAD_YEAR_MAX}`;
-}
-
-export function formatStoryDate(createdAt) {
-  if (!createdAt) return "";
-  const parsed = new Date(createdAt);
-  if (Number.isNaN(parsed.getTime())) return "";
-
-  return parsed.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-export function getStoryPreview(storyText, hasAudio, maxLength = 100) {
-  const cleanedStory = sanitizeStoryText(storyText);
-  if (!cleanedStory) {
-    return hasAudio
-      ? "Audio story available. Press play to listen."
-      : "No text story available.";
-  }
-
-  if (cleanedStory.length <= maxLength) return cleanedStory;
-  return `${cleanedStory.slice(0, maxLength - 1)}…`;
 }
 
 export function getCountryFlagEmoji(countryCode) {

@@ -71,43 +71,6 @@ function drawGlobeIcon(ctx, centerX, centerY, color) {
   ctx.restore();
 }
 
-export function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const lines = [];
-  const paragraphs = String(text || "").split(/\n+/);
-
-  paragraphs.forEach((paragraph, paragraphIndex) => {
-    const words = paragraph.split(/\s+/).filter(Boolean);
-
-    if (!words.length) {
-      lines.push("");
-    } else {
-      let currentLine = words[0];
-
-      for (let i = 1; i < words.length; i += 1) {
-        const candidateLine = `${currentLine} ${words[i]}`;
-        if (ctx.measureText(candidateLine).width <= maxWidth) {
-          currentLine = candidateLine;
-        } else {
-          lines.push(currentLine);
-          currentLine = words[i];
-        }
-      }
-
-      lines.push(currentLine);
-    }
-
-    if (paragraphIndex < paragraphs.length - 1) {
-      lines.push("");
-    }
-  });
-
-  lines.forEach((line, lineIndex) => {
-    ctx.fillText(line, x, y + lineIndex * lineHeight);
-  });
-
-  return lines.length;
-}
-
 function getWrappedLines(ctx, text, maxWidth) {
   const lines = [];
   const paragraphs = String(text || "").split(/\n+/);

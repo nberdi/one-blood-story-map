@@ -1,7 +1,6 @@
 .image-modal-root {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  min-height: 100vh;
   z-index: 10000;
   display: grid;
   place-items: center;

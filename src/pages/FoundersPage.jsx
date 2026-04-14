@@ -44,7 +44,7 @@ export default function FoundersPage() {
 
       <main className="founders-main">
         <section className="founders-team">
-          <h2>Meet the Team</h2>
+          <h2>Founders</h2>
           <div className="founders-team-grid">
             {TEAM_MEMBERS.map((member) => (
               <article key={member.name} className="founders-member-card">

@@ -67,6 +67,7 @@ export async function searchHometownSuggestions(query, options = {}) {
 }
 
 export async function geocodeHometown(query) {
-  const results = await runSearch(query, 1);
-  return results[0] || null;
+  const results = await runSearch(query, 3);
+  if (results.length !== 1) return null;
+  return results[0];
 }

@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
+import { useModalAccessibility } from "./useModalAccessibility";
 import "./StoryCardModal.css";
 
 export default function StoryCardModal({
@@ -8,20 +9,8 @@ export default function StoryCardModal({
   onDownload,
   onClose,
 }) {
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  const panelRef = useRef(null);
+  useModalAccessibility({ isOpen, onClose, panelRef });
 
   if (!isOpen || !imageUrl) return null;
 
@@ -37,6 +26,8 @@ export default function StoryCardModal({
         role="dialog"
         aria-modal="true"
         aria-label="Story card preview"
+        ref={panelRef}
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
       >
         <h3>Story Card Preview</h3>

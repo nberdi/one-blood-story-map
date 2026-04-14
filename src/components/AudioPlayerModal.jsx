@@ -1,25 +1,16 @@
-import { useEffect } from "react";
+import { useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   getGraduationYearLabel,
   getHometownWithFlag,
   sanitizeAudioUrl,
 } from "../storyUtils";
+import { useModalAccessibility } from "./useModalAccessibility";
 import "./AudioPlayerModal.css";
 
 export default function AudioPlayerModal({ isOpen, story, onClose }) {
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [isOpen, onClose]);
+  const panelRef = useRef(null);
+  useModalAccessibility({ isOpen, onClose, panelRef });
 
   if (!isOpen || !story) return null;
 
@@ -40,6 +31,8 @@ export default function AudioPlayerModal({ isOpen, story, onClose }) {
         role="dialog"
         aria-modal="true"
         aria-label="Audio player"
+        ref={panelRef}
+        tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="audio-modal-header">
